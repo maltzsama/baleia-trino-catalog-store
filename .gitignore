@@ -1,0 +1,530 @@
+# ============================================
+# Java / Maven
+# ============================================
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+*.jmod
+*.hprof
+*.dump
+
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+.mvn/wrapper/maven-wrapper.properties
+
+# ============================================
+# IntelliJ IDEA
+# ============================================
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+.idea_modules/
+.idea/caches/
+.idea/libraries/
+.idea/dataSources/
+.idea/dataSources.ids
+.idea/dataSources.local.xml
+.idea/sqlDataSources.xml
+.idea/dynamic.xml
+.idea/uiDesigner.xml
+.idea/gradle.xml
+.idea/maven.xml
+.idea/workspace.xml
+.idea/usage.statistics.xml
+.idea/tasks.xml
+.idea/shelf/
+.idea/dictionaries/
+.idea/vcs.xml
+.idea/jsLibraryMappings.xml
+.idea/artifacts/
+.idea/compiler.xml
+.idea/encodings.xml
+.idea/modules.xml
+.idea/jarRepositories.xml
+.idea/misc.xml
+.idea/vcs.xml
+.idea/scopes/
+.idea/runConfigurations/
+.idea/codeStyles/
+.idea/azure/
+.idea/aws/
+.idea/target/
+*.hprof
+*.tmp
+
+# ============================================
+# Visual Studio Code
+# ============================================
+.vscode/
+.vscode-test/
+*.code-workspace
+.vscode/settings.json
+.vscode/tasks.json
+.vscode/launch.json
+.vscode/extensions.json
+.vscode/.ropeproject
+.history/
+*.vsix
+.vscode/workspaceStorage/
+.vscode/argv.json
+.vscode/.*.code-snippets
+
+# ============================================
+# Sublime Text
+# ============================================
+*.sublime-project
+*.sublime-workspace
+*.sublime-settings
+.sublime/
+.sublimerepos
+.sublime-github
+.sublime-package
+.sublime-cache
+.sublime-workspace/
+Package Control.cache/
+Package Control.ca-bundle
+Package Control.last-run
+Package Control.user-ca-bundle
+.sublime-text-3/
+.sublime-text-4/
+
+# ============================================
+# Neovim / Vim
+# ============================================
+*.swp
+*.swo
+*.swn
+*.swm
+*.un~
+*.~*
+.*.swp
+.*.swo
+.*.swn
+Session.vim
+.viminfo
+.vimrc.un~
+.vimrc~
+.nvimrc*
+*.vimrc~
+*.nvimrc~
+.nvim/
+.nvimi
+.vim/
+vimfiles/
+backup/
+swap/
+undo/
+.undodir/
+.nvim_session
+.nvim-session
+.nvim_state
+.nvim_sessions/
+.nvimlog
+.shada
+*.shada
+
+# ============================================
+# AI Tools & Assistants
+# ============================================
+# OpenAI / OpenCode
+.opencode/
+.opencode*
+open_code/
+open-code/
+.codegen/
+.codegen.json
+.codegen.lock
+*.codegen.json
+
+# Claude Code
+.claude/
+.claude*
+claude/
+.claude-code/
+.claude-code.json
+.claude.json
+.claude.log
+.claude-cache/
+.claude-settings.json
+.claude-sessions/
+claude-session.json
+
+# GitHub Copilot
+.copilot/
+.github/copilot/
+.copilotignore
+.copilot-suggestions.json
+.copilot.log
+copilot-session.json
+
+# Tabnine
+.tabnine/
+.tabnine-cache/
+.tabnine-config.json
+
+# Codeium
+.codeium/
+.codeium-cache/
+.codeium-config.json
+
+# Cursor AI
+.cursor/
+.cursorignore
+.cursor-settings.json
+.cursor.cursor
+.cursor-session.json
+.cursor-cache/
+.cursorrules
+
+# Continue.dev
+.continue/
+.continue.json
+.continue-cache/
+.continue-session.json
+
+# Sourcegraph / Cody
+.cody/
+.cody.json
+.cody-cache/
+.cody-session.json
+
+# Amazon CodeWhisperer
+.awscodewhisperer/
+.code-whisperer/
+.code-whisperer.json
+.codewhisperer-session.json
+
+# ChatGPT / OpenAI exported files
+*-openai-*.json
+*-gpt-*.json
+*-chatgpt-*.json
+.openai/
+.gpt/
+
+# AI Training / Model files
+*.pth
+*.pt
+*.h5
+*.hdf5
+*.pb
+*.tflite
+*.onnx
+*.mlmodel
+*.caffemodel
+*.prototxt
+*.model
+*.weights
+*.bin
+*.npy
+*.npz
+*.safetensors
+
+# ============================================
+# Operating System Files
+# ============================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+*.~
+~$*
+$RECYCLE.BIN/
+*.lnk
+*.tmp
+*.temp
+*.swp
+*.swo
+*.lock
+*.cache
+
+# ============================================
+# Logs & Reports
+# ============================================
+*.log
+logs/
+target/surefire-reports/
+target/failsafe-reports/
+target/checkstyle-*/
+target/spotbugs-*/
+target/jacoco.exec
+target/site/
+test-output/
+*.report
+*.report.html
+*.test
+*.coverage
+
+# ============================================
+# Docker
+# ============================================
+docker/data/
+docker/postgres/
+docker/trino/data/
+docker/trino/logs/
+*.pid
+*.socket
+.dockerignore
+Dockerfile.*.tmp
+docker-compose.override.yml
+docker-compose.*.override.yml
+.docker/
+docker/.env
+
+# ============================================
+# Environment & Secrets
+# ============================================
+.env
+.env.*
+!.env.example
+*.local
+*.secret
+*.credentials
+*.key
+*.pem
+*.crt
+*.csr
+*.pkcs12
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.truststore
+secrets/
+**/secrets/
+**/*-secret.*
+**/*-credentials.*
+**/secret-resolver.*
+application-*.properties
+!application-example.properties
+bootstrap-*.properties
+!bootstrap-example.properties
+config-*.yml
+!config-example.yml
+.git-credentials
+.gitconfig.local
+.ssh/
+id_rsa*
+id_dsa*
+*.priv
+*.pub
+*.pwd
+passwords.txt
+*.password
+*.pwd
+*.token
+*.tokens
+access-*.json
+*.access.json
+credentials.json
+service-account.json
+*.google-credentials.json
+*.aws-credentials.json
+
+# ============================================
+# Node.js / JavaScript / TypeScript
+# ============================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+*.npmrc
+*.yarnrc
+.npm/
+.yarn/
+.pnpm-store/
+.eslintcache
+.stylelintcache
+*.tsbuildinfo
+.rollup.cache/
+dist/
+build/
+lib/
+coverage/
+.nyc_output/
+.next/
+.nuxt/
+.nuxt2/
+.nuxt3/
+.output/
+.vercel/
+.netlify/
+
+# ============================================
+# Python
+# ============================================
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+*.so
+*.dylib
+*.dll
+venv/
+env/
+ENV/
+.env/
+.venv/
+pyvenv.cfg
+.pytest_cache/
+.tox/
+.coverage
+htmlcov/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+*.egg-info/
+*.egg
+.eggs/
+pip-log.txt
+pip-delete-this-directory.txt
+dist/
+wheels/
+share/python-wheels/
+MANIFEST
+.pip/
+pip-*.log
+.python-version
+.pythonrc
+*.pth
+
+# ============================================
+# Database Files
+# ============================================
+*.db
+*.db3
+*.sqlite
+*.sqlite3
+*.h2.db
+*.mv.db
+*.trace.db
+*.lck
+*.dat
+*.idx
+*.frm
+*.ibd
+*.ibdata
+*.logfile
+*.err
+catalog-store.db
+trino-*.db
+*.derby
+derby.log
+hsqldb/
+*.lobs
+
+# ============================================
+# Misc
+# ============================================
+*.pid
+*.seed
+*.pid.lock
+*.bak
+*.backup
+*.orig
+*.rej
+*.patch
+*.diff
+*.gz
+*.zip
+*.rar
+*.7z
+*.tar
+*.tgz
+*.bz2
+*.xz
+*.zst
+*.snap
+*.img
+*.iso
+*.dmg
+*.exe
+*.msi
+*.dmg
+
+# ============================================
+# Trino Specific
+# ============================================
+trino-server/
+trino-client/
+trino-cli/
+.trino/
+.trino-cli
+.trino-config
+.trino-cache
+catalog-store/
+catalog-store-*.db
+catalog-store*.tmp
+*.catalog-store
+*.trino-*
+.trino.log
+trino-*.log
+
+# ============================================
+# Documentation Builds
+# ============================================
+docs/_build/
+docs/html/
+docs/latex/
+docs/man/
+docs/texinfo/
+docs/text/
+docs/api/
+docs/generated/
+site/
+apidocs/
+javadoc/
+*.javadoc
+
+# ============================================
+# CI/CD
+# ============================================
+.github/workflows/*.tmp
+.ci/
+.gitlab-ci-local/
+.jenkins/
+.drone/
+.teamcity/
+circleci/
+.azure-pipelines/
+.github/.tmp/
+.github/config.yml
+
+# ============================================
+# Gradle (if used alongside Maven)
+# ============================================
+.gradle/
+build/
+gradle/
+gradle.properties
+gradlew
+gradlew.bat
+*.gradle
+*.gradle.kts
+*.gradle.lockfile
+gradle-wrapper.properties
+gradle-wrapper.jar
+gradle/wrapper/
+

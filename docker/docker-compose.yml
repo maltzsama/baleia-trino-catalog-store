@@ -1,0 +1,50 @@
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_DB: baleia
+      POSTGRES_USER: baleia
+      POSTGRES_PASSWORD: baleia
+      # Role password for baleia_trino, created by docker/initdb/02-role.sh.
+      # Both containers read the SAME env var so they can never disagree.
+      # Production deploys must override this via an environment secret
+      # (Docker Swarm secret, k8s Secret mounted as env, etc.) on the HOST
+      # before `docker compose up`.
+      BALEIA_TRINO_DB_PASSWORD: ${BALEIA_TRINO_DB_PASSWORD:-change_before_deploy}
+    ports:
+      - "5432:5432"
+    volumes:
+      # IMPORTANT: Postgres 18 changed PGDATA to /var/lib/postgresql/18/docker
+      # and the image's VOLUME directive moved to /var/lib/postgresql. Mounting
+      # at /var/lib/postgresql/data (the old path) silently puts data on an
+      # anonymous volume and loses it on recreate. Mount the parent instead.
+      - pgdata:/var/lib/postgresql
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U baleia -d baleia"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  trino:
+    image: trinodb/trino:482
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      # Airlift's secrets resolver reads ${ENV:NAME} in catalog-store.properties,
+      # so the password never has to be committed.
+      BALEIA_TRINO_DB_PASSWORD: ${BALEIA_TRINO_DB_PASSWORD:-change_before_deploy}
+    volumes:
+      - ./trino/config.properties:/etc/trino/config.properties:ro
+      - ./trino/node.properties:/etc/trino/node.properties:ro
+      - ./trino/jvm.config:/etc/trino/jvm.config:ro
+      - ./trino/catalog-store.properties:/etc/trino/catalog-store.properties:ro
+      # The entire plugin directory: jar + dependencies (mounted from target/).
+      - ../target/baleia-catalog-store:/usr/lib/trino/plugin/baleia-catalog-store:ro
+      # Important: etc/catalog is NOT mounted — must remain empty in the final image.
+
+volumes:
+  pgdata:
