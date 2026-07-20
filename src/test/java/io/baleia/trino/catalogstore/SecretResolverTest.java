@@ -25,7 +25,7 @@ class SecretResolverTest
         SecretResolver resolver = new SecretResolver(dbReturning(
                 Map.of("iceberg.rest.auth.token", "supersecreto")));
         Map<String, String> out = resolver.resolve(Map.of(
-                "iceberg.rest.auth.token", "${baleia-secret:vault:iceberg.rest.auth.token}"));
+                "iceberg.rest.auth.token", "@baleia-secret[vault:iceberg.rest.auth.token]"));
         assertEquals("supersecreto", out.get("iceberg.rest.auth.token"));
     }
 
@@ -34,7 +34,7 @@ class SecretResolverTest
     {
         SecretResolver resolver = new SecretResolver(dbReturningEmpty());
         IllegalStateException e = assertThrows(IllegalStateException.class,
-                () -> resolver.resolve(Map.of("k", "${baleia-secret:missing:x}")));
+                () -> resolver.resolve(Map.of("k", "@baleia-secret[missing:x]")));
         assertTrue(e.getMessage().contains("k"));
         assertTrue(e.getMessage().contains("missing:x"));
     }
@@ -44,7 +44,7 @@ class SecretResolverTest
     {
         SecretResolver resolver = new SecretResolver(dbReturning(Map.of("other", "value")));
         IllegalStateException e = assertThrows(IllegalStateException.class,
-                () -> resolver.resolve(Map.of("k", "${baleia-secret:vault:not.found}")));
+                () -> resolver.resolve(Map.of("k", "@baleia-secret[vault:not.found]")));
         assertTrue(e.getMessage().contains("k"));
         assertTrue(e.getMessage().contains("vault:not.found"));
     }
@@ -58,7 +58,7 @@ class SecretResolverTest
         // returned. Returning it would risk leaking the placeholder into logs as if it were
         // a resolved credential.
         IllegalStateException e = assertThrows(IllegalStateException.class,
-                () -> resolver.resolve(Map.of("k", "${baleia-secret:MiXed:chave}")));
+                () -> resolver.resolve(Map.of("k", "@baleia-secret[MiXed:chave]")));
         assertTrue(e.getMessage().contains("k"));
         assertTrue(e.getMessage().contains("does not match"));
     }

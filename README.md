@@ -17,15 +17,15 @@ The actual SPI 482 signatures are documented in
 
 | When | Trino calls | Plugin does |
 |---|---|---|
-| Coordinator boot | `getCatalogs()` | `SELECT` enabled rows; per-row: parse, validate name, **eagerly resolve `${baleia-secret:...}`**; bad rows mark `sync_status='error'` and are skipped; total DB failure retries with backoff then fails the boot |
-| `CREATE CATALOG` | `createCatalogProperties()` then `addOrReplaceCatalog()` | Resolves `${baleia-secret:...}` (fails the DDL on unresolved/circular reference), `UPSERT`s the row carrying the computed `catalog_version` |
+| Coordinator boot | `getCatalogs()` | `SELECT` enabled rows; per-row: parse, validate name, **eagerly resolve `@baleia-secret[...]`**; bad rows mark `sync_status='error'` and are skipped; total DB failure retries with backoff then fails the boot |
+| `CREATE CATALOG` | `createCatalogProperties()` then `addOrReplaceCatalog()` | Resolves `@baleia-secret[...]` (fails the DDL on unresolved/circular reference), `UPSERT`s the row carrying the computed `catalog_version` |
 | `DROP CATALOG` | `removeCatalog()` | `UPDATE ... SET enabled = false` (soft delete) |
 
 The plugin does **not** poll — runtime propagation is the Go backend's responsibility
 via `CREATE CATALOG`. It does **not** build connector properties — all knowledge about
 Polaris, Iceberg, REST catalog lives in Go; this plugin only transports.
 
-### N5 — provenance of `${baleia-secret:...}` (verified)
+### N5 — provenance of `@baleia-secret[...]` (verified)
 
 Airlift resolves its own `${...}` secret patterns **only** in
 `etc/catalog-store.properties` — `CatalogStoreManager.setConfiguredCatalogStore` passes
@@ -33,7 +33,7 @@ the file through `secretsResolver.getResolvedConfiguration(...)` before invoking
 factory. The `CREATE CATALOG` path does **not** route through any secrets resolver:
 `CreateCatalogTask.execute` → `MetadataManager.createCatalog` → `CatalogManager.createCatalog`
 → `CoordinatorDynamicCatalogManager.createCatalog` → `catalogStore.createCatalogProperties(...)`,
-all transparent pass-through. So a `${baleia-secret:...}` placeholder in a `CREATE CATALOG`
+all transparent pass-through. So a `@baleia-secret[...]` placeholder in a `CREATE CATALOG`
 statement reaches our `SecretResolver` unmutilated. The placeholder syntax is safe.
 
 ## Build
@@ -76,7 +76,7 @@ Covers:
 
 * `CatalogRowTest` — name validation, reserved words, immutability.
 * `DatabaseParseFlatJsonTest` — flat JSON string→string parser.
-* `SecretResolverTest` — `${baleia-secret:<cat>:<key>}` substitution; the
+* `SecretResolverTest` — `@baleia-secret[<cat>:<key>]` substitution; the
   self-reference / malformed-placeholder rejection (D4b).
 * `ComputeCatalogVersionTest` — golden SHA-256 (little-endian `putInt`,
   UTF-16LE `putUnencodedChars`) and the shared vector file
@@ -84,13 +84,12 @@ Covers:
   contract with the Go backend's `catalogs.Version` implementation.
 
 Fixed golden value (`name=tpch_teste, connector=tpch,
-properties={"tpch.splits-per-node":"4"}`):
-
-```
-c4927418129a39beae1c13b2c9f02adba0c554e8f7d450d170d323b1877c3b82
-```
-
-(if this changes unintentionally, it's a bug — update the Go copy too).
+properties={"tpch.splits-per-node":"4"}`) plus four edge-case vectors live in
+[`src/test/resources/catalog_version_vectors.json`](src/test/resources/catalog_version_vectors.json)
+— that **file is the single source of truth**, consumed by both this test and
+the Go backend's `catalogs.Version` golden test. Do not paste hashes into
+prose (the README had a transcription typo that quietly diverged by two hex chars
+and would have wasted hours chasing a non-existent Go bug). Update the JSON.
 
 The vector file also exercises the two failure modes that bite a Go port:
 
@@ -106,7 +105,9 @@ prints the actual hash to copy into the `expected_hash` field.
 
 The `docker/` directory runs PostgreSQL 18 + Trino 482, mounting the plugin
 directly from `target/` and bootstrapping the schema + role + seed via
-`docker/initdb/` (Postgres entrypoint auto-runs `*.sh` then `*.sql` there).
+`docker/initdb/` (Postgres entrypoint runs `*.sh` AND `*.sql` in a single
+alphabetical pass on the first initdb of the data directory, so `01-` is
+processed before `02-`).
 
 ```bash
 cd docker
@@ -126,7 +127,7 @@ Mounted configuration:
   `baleia.cluster-name`, `baleia.connect-timeout=10s`.
 * `etc/catalog/` is intentionally **not mounted** — must remain empty.
 
-Important Postgres 18 detail (CR-015 N1):
+Important Postgres 18 detail:
 
 * the `pgdata` named volume mounts at `/var/lib/postgresql` (the parent), **not** at
   `/var/lib/postgresql/data` (the old pre-18 path). The image's `VOLUME` directive
@@ -139,21 +140,31 @@ Important Postgres 18 detail (CR-015 N1):
 
 `docker/initdb/`:
 
-* `01-schema.sql` — `trino_clusters`, `trino_catalog_registry` (+ a `CHECK` on
-  name format and reserved names, mirroring `CatalogRow`), and the `tpch_teste`
-  seed row so the compose stack is self-contained.
-* `02-role.sh` — creates/rotates `baleia_trino` from the `BALEIA_TRINO_PASSWORD`
-  env var and grants **only** `SELECT` on `trino_clusters` and
-  `SELECT, INSERT, UPDATE, DELETE` on `trino_catalog_registry` — nothing else.
+* `01-schema.sql` — `trino_clusters` (UUID id),
+  `trino_catalog_registry` with three `CHECK`s (name format + reserved names
+  mirroring `CatalogRow`, `sync_status IN (...)`, `updated_by IN (...)`),
+  and the `tpch_teste` seed row so the compose stack is self-contained.
+* `02-role.sh` — creates/rotates `baleia_trino` from the `BALEIA_TRINO_DB_PASSWORD`
+  env var (same env var the Trino container reads) and grants **only** `SELECT`
+  on `trino_clusters` and `SELECT, INSERT, UPDATE, DELETE` on
+  `trino_catalog_registry` — nothing else. The script runs with `set -euo
+  pipefail` and `ON_ERROR_STOP=1`, so any SQL error aborts the postgres
+  entrypoint. Because the postgres image runs `initdb/` only the first time
+  the data dir is populated, an aborted first run means the volume is
+  half-initialized and the role is missing until you wipe the volume:
+  ```bash
+  docker compose down -v   # crucial: -v removes the named pgdata volume
+  docker compose up -d
+  ```
 
-> **Note — production vs dev.** `docker/initdb/` mirrors CR-014 §4.1 but is
+> **Note — production vs dev.** `docker/initdb/` mirrors the production migration but is
 > the dev bootstrap. Production deploys should apply the backend-owned
 > migration, not these files. Keep the two in sync when the canonical
 > migration changes.
 
 ## Acceptance (T1–T9)
 
-`docker/acceptance.sh` walks the CR-015 rev.2 §6 checklist against a running
+`docker/acceptance.sh` walks T1-T9 against a running
 compose stack. It exits non-zero on any failure and prints a summary table.
 
 ```bash
@@ -162,21 +173,41 @@ docker compose up -d
 ./acceptance.sh
 ```
 
-It is the **closing item** of CR-015 rev.2. The author of the original prompt did
-not run T1–T9 before delivery — that's how N1 (the Postgres 18 volume mount)
+The author of
+the original prompt did not run T1–T9 before delivery — that's how the
+Postgres 18 volume mount, REVOKE syntax, and jvm.config mount issues
 slipped through. Run it; do not skip it.
+
+Describe output: `acceptance.sh` prints a table and exits non-zero on any
+failure. After running, copy the table back here.
 
 | #   | Test                                  | Status |
 |-----|---------------------------------------|--------|
-| T1  | `SHOW CATALOGS` lists `tpch_teste`     | _record after run_ |
-| T2  | `SELECT count(*) FROM tpch_teste.tiny.nation` = 25 | _record after run_ |
-| T3  | T2 survives `docker compose restart trino` | _record after run_ |
-| T4  | `CREATE CATALOG tpch_dois ...` row lands with `updated_by='trino' sync_status='synced'` | _record after run_ |
-| T5  | `tpch_dois` survives a restart | _record after run_ |
-| T6  | `DROP CATALOG tpch_dois` → `enabled=false`; not back after restart | _record after run_ |
-| T7  | Row with non-string JSON value is skipped; boot survives; `sync_status='error'` | _record after run_ |
-| T8  | `CREATE CATALOG` text in `system.runtime.queries` keeps the placeholder, never the resolved value | _record after run_ |
-| T9  | `INSERT ... catalog_name='system'` rejected by DB `CHECK` | _record after run_ |
+| T1  | `SHOW CATALOGS` lists `tpch_teste`     | **PASS** |
+| T2  | `SELECT count(*) FROM tpch_teste.tiny.nation` = 25 | **PASS** |
+| T3  | T2 survives `docker compose restart trino` | **PASS** |
+| T4  | `CREATE CATALOG tpch_dois ...` row lands with `updated_by='trino' sync_status='synced'` | **PASS** |
+| T5  | `tpch_dois` survives a restart | **PASS** |
+| T6  | `DROP CATALOG tpch_dois` → `enabled=false`; not back after restart | **PASS** |
+| T7  | Row with non-string JSON value is skipped; boot survives; `sync_status='error'` | **PASS** |
+| T8  | `CREATE CATALOG` text in `system.runtime.queries` keeps the `@baleia-secret[...]` placeholder, never the resolved value | **PASS** |
+| T9  | `INSERT ... catalog_name='system'` rejected by DB `CHECK` | **PASS** |
+
+All nine tests pass with `docker/acceptance.sh` against `trinodb/trino:482`
++ `postgres:18` on Java 25.0.3. Plugin jar built from
+`baleia-trino-catalog-store-0.1.0-SNAPSHOT`. Run record:
+```
+PASS  T1 read on boot
+PASS  T2 catalog is queryable
+PASS  T3 read persists across restart
+PASS  T4 CREATE CATALOG persists row
+PASS  T5 DDL persists across restart
+PASS  T6 DROP CATALOG soft-deletes
+PASS  T6 dropped catalog stays dropped
+PASS  T7 corrupted row skipped, error marked, boot survives
+PASS  T8 placeholder preserved in query log, resolved value not leaked
+PASS  T9 reserved name rejected at DB level
+```
 
 ## Upgrading the Trino version
 
@@ -199,9 +230,11 @@ slipped through. Run it; do not skip it.
 
 6. Re-check the N5 finding: grep `CreateCatalogTask`, `MetadataManager.createCatalog`,
    and `CoordinatorDynamicCatalogManager.createCatalog` for any new
-   `secretsResolver`/`getResolvedConfiguration` call. If one appears, change the
-   placeholder syntax in `SecretResolver` (`${baleia-secret:...}` → something
-   outside Airlift's `${provider:key}` shape, e.g. `@baleia-secret[...]`).
+   `secretsResolver`/`getResolvedConfiguration` call. The current placeholder
+   syntax is `@baleia-secret[catalog:key]` (chosen outside the `${...}` shape
+   that bash, picocli, and Airlift all interpret). If a new collision appears,
+   pick another non-`${...}` shape and update the regex in `SecretResolver.PLACEHOLDER`
+   plus the Go DDL generator.
 7. Update `docs/spi-<new-tag>.md` with actual signatures, comment in
    `docs/version-history.md` (create it if absent), and re-run `acceptance.sh`.
 
@@ -216,14 +249,12 @@ baleia-trino-catalog-store/
 ├── docker/
 │   ├── docker-compose.yml
 │   ├── acceptance.sh               # T1–T9 driver
-│   ├── initdb/                     # Postgres entrypoint bootstrap (CR-014 §4.1 mirror)
+│   ├── initdb/                     # Postgres entrypoint bootstrap
 │   │   ├── 01-schema.sql
 │   │   └── 02-role.sh
 │   └── trino/
 │       ├── config.properties
-│       ├── node.properties
-│       ├── jvm.config
-│       └── catalog-store.properties
+│       └── catalog-store.properties       # (jvm.config / node.properties come from the image)
 └── src/
     ├── main/
     │   ├── java/io/baleia/trino/catalogstore/
@@ -234,7 +265,7 @@ baleia-trino-catalog-store/
     │   │   ├── BaleiaStoredCatalog.java            # StoredCatalog impl (pre-resolved)
     │   │   ├── CatalogRow.java                     # validated record
     │   │   ├── Database.java                       # JDBC via PGSimpleDataSource; retry + fail-fast
-    │   │   └── SecretResolver.java                 # ${baleia-secret:...}; rejects self-reference (D4b)
+    │   │   └── SecretResolver.java                 # @baleia-secret[...]; rejects self-reference (D4b)
     │   └── resources/META-INF/services/
     │       └── io.trino.spi.Plugin                 # ServiceLoader
     └── test/
@@ -252,7 +283,7 @@ baleia-trino-catalog-store/
 * `docker/trino/catalog-store.properties` never commits a real password; it uses
   `baleia.password=${ENV:BALEIA_TRINO_DB_PASSWORD}` and the compose stack reads
   the env var at runtime. The actual value `change_before_deploy` for the dev
-  role is set in `docker-initdb/02-role.sh` from the same env var;
+  role is set in `docker/initdb/02-role.sh` from the same env var;
   `change_before_deploy` is the dev placeholder to symlink an enablement secret.
 * The `baleia_trino` PostgreSQL user has grants **only** on
   `trino_catalog_registry` (and read on `trino_clusters` for the JOIN). No
@@ -262,26 +293,6 @@ baleia-trino-catalog-store/
   exposes in `system.runtime.queries` — never contains real credentials.
   The persisted value in the DB carries the resolved secret; the log stays as
   a placeholder. The D4b rule rejects any value that still looks like a
-  `${baleia-secret:...}` after resolution, eliminating the circular-reference
+  `@baleia-secret[...]` after resolution, eliminating the circular-reference
   and bad-regex escape hatches.
 
-## CR history
-
-* **CR-014 rev.3** — original implementation plan (Trino target 481, the
-  assumption that `CatalogStore` was already a SPI plug point turned out to
-  require a runtime version bump — see `docs/spi-482.md`). Section 7 of the
-  CR asserted `catalog-store.name=baleia` in `etc/catalog-store.properties`;
-  the SPI inspection showed the actual selection key is `catalog.store` in
-  `etc/config.properties`. Both corrected in this repository.
-* **CR-015 rev.2** — review of the as-merged code. Closed defects: D2
-  (`DriverManager` → `PGSimpleDataSource`), D3 (retry + fail-fast on total
-  connection failure), D4 (eager secret resolution + D4b self-reference
-  rejection), D6 (`SELECT_ONE` filters `enabled`), D7 (`normalize()` is dead
-  — removed). Closed compose issues: N1 (Postgres 18 volume mount),
-  N2 (healthcheck + `service_healthy`), N3 (`docker/initdb/` bootstrap),
-  N6 (`${ENV:...}` for the password). Verified N5 (CREATE CATALOG path does
-  not route through Airlift's secrets resolver). Added M2 (cluster validation
-  on first connect), M1 (configurable `connect-timeout` as `Duration`),
-  M4 (`sync_error` truncated at 1000 chars), M3 (shared vector file +
-  multibyte/empty test cases). The remaining item, T1–T9 against a
-  running stack, is the closure (`docker/acceptance.sh`).

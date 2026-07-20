@@ -8,17 +8,25 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Replaces ${baleia-secret:<catalog>:<key>} with the actual value from the database.
+ * Replaces {@code @baleia-secret[<catalog>:<key>]} with the actual value from the database.
  * This ensures the CREATE CATALOG text — which Trino logs and exposes in the Web UI —
  * never contains real credentials.
+ *
+ * <p><b>Why not {@code ${baleia-secret:...}}?</b> The Trino CLI (and several other
+ * tools in the ecosystem — bash, picocli, Spring) interpret {@code ${...}} as a
+ * variable expansion before the SQL reaches our {@code createCatalogProperties}. The
+ * Trino <em>server</em> routes CREATE CATALOG
+ * properties straight through, but any client that does its own {@code ${...}}
+ * parsing will eat our placeholder. Using {@code @baleia-secret[...]} sidesteps
+ * every standard expansion syntax.
  *
  * <p>The substitution is total and verified: after resolution, the resolver confirms no
  * output value still looks like a baleia-secret placeholder. This catches:
  * <ul>
- *   <li>Unresolved placeholders that shape-match `${baleia-secret:...}` literally
+ *   <li>Unresolved placeholders that shape-match {@code @baleia-secret[...]} literally
  *       (e.g. the catalog segment is uppercase and the regex never matched).</li>
- *   <li>A referenced secret whose stored value is itself a `${baleia-secret:...}` reference,
- *       i.e. a (deliberate or accidental) circular reference.</li>
+ *   <li>A referenced secret whose stored value is itself a {@code @baleia-secret[...]}
+ *       reference, i.e. a (deliberate or accidental) circular reference.</li>
  * </ul>
  * Both cases throw {@link IllegalStateException}, which {@code BaleiaCatalogStore} either
  * fails the catalog load (boot path) or surfaces back to the user (DDL path) with.
@@ -26,7 +34,7 @@ import java.util.regex.Pattern;
 public class SecretResolver
 {
     private static final Pattern PLACEHOLDER =
-            Pattern.compile("^\\$\\{baleia-secret:([a-z][a-z0-9_]{0,62}):([^}]+)\\}$");
+            Pattern.compile("^@baleia-secret\\[([a-z][a-z0-9_]{0,62}):([^\\]]+)\\]$");
 
     private final Database database;
 
@@ -52,9 +60,9 @@ public class SecretResolver
                                 // Message without the secret value, only the pointer. Goes to the log.
                                 "Could not resolve secret for property '" + key
                                         + "' (reference: " + catalog + ":" + secretKey + ")"));
-                // D4b: reject a resolved value that is itself a ${baleia-secret:...}. This also
-                // catches nested references and the degenerate case where the stored secret is
-                // literally the unresolved placeholder text.
+                // D4b: reject a resolved value that is itself a placeholder. This also
+                // catches nested references and the degenerate case where the stored
+                // secret is literally the unresolved placeholder text.
                 if (PLACEHOLDER.matcher(resolved).matches()) {
                     throw new IllegalStateException(
                             "Resolved secret for '" + key + "' is itself a baleia-secret placeholder; "
@@ -65,7 +73,7 @@ public class SecretResolver
             else {
                 // D4b: reject values that still look like our placeholder syntax even though
                 // the strict regex did not match (e.g. uppercase, malformed bracket).
-                if (value != null && value.startsWith("${baleia-secret:")) {
+                if (value != null && value.startsWith("@baleia-secret[")) {
                     throw new IllegalStateException(
                             "Property '" + key + "' value looks like a baleia-secret placeholder "
                                     + "but does not match the expected pattern: " + value);

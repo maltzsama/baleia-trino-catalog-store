@@ -1,20 +1,33 @@
 -- Dev bootstrap for the baleia-trino-catalog-store compose stack.
 --
--- This is the minimal schema the Trino plugin needs to boot. It mirrors
--- CR-014 §4.1; the backend Go repository owns the canonical migration —
--- keep them in sync. Production deploys should apply the backend migration,
--- not this file.
+-- Schema with the columns the plugin needs to boot:
+--   * trino_clusters.id  UUID (matches the production migration schema)
+--   * trino_catalog_registry + CHECK on name format, reserved names,
+--     sync_status, updated_by
+-- The backend Go repository owns the canonical migration; this file only
+-- reproduces the columns the plugin touches at boot/DDl, with the same
+-- CHECKs so manual inserts surface the same errors here as in production.
 --
--- Docker entrypoint runs *.sh then *.sql alphabetically against the
--- POSTGRES_DB (baleia) as the superuser.
+-- Correction about the entrypoint: docker-library/postgres
+-- processes /docker-entrypoint-initdb.d in a single alphabetical pass —
+-- NOT "*.sh then *.sql". The role bootstrap in 02-role.sh runs AFTER this
+-- file only because "02-" sorts after "01-". Don't rename files trusting
+-- the "*.sh first" claim later found in some blog posts.
+-- Both .sh AND .sql in the same directory are run once, in sort order, on
+-- the first initdb of the data dir.
 
 -- ════════════════════════════════════════════════════════════════════════
 -- Clusters
 -- ════════════════════════════════════════════════════════════════════════
+-- UUID for trino_clusters.id. The plugin joins by
+-- trino_clusters.name, so id type is opaque to it; we keep the same type
+-- as the canonical migration to avoid a surprise during integration tests.
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 CREATE TABLE IF NOT EXISTS trino_clusters (
-    id          bigserial PRIMARY KEY,
-    name        text NOT NULL UNIQUE,
-    created_at  timestamptz NOT NULL DEFAULT now()
+    id              uuid         PRIMARY KEY DEFAULT gen_random_uuid(),
+    name            text         NOT NULL UNIQUE,
+    created_at      timestamptz  NOT NULL DEFAULT now()
 );
 
 INSERT INTO trino_clusters (name)
@@ -25,7 +38,7 @@ ON CONFLICT (name) DO NOTHING;
 -- Catalog registry
 -- ════════════════════════════════════════════════════════════════════════
 CREATE TABLE IF NOT EXISTS trino_catalog_registry (
-    cluster_id       bigint       NOT NULL REFERENCES trino_clusters(id),
+    cluster_id       uuid         NOT NULL REFERENCES trino_clusters(id),
     catalog_name     text         NOT NULL,
     connector_name   text         NOT NULL,
     properties       jsonb        NOT NULL,
@@ -41,9 +54,9 @@ CREATE TABLE IF NOT EXISTS trino_catalog_registry (
 CREATE INDEX IF NOT EXISTS trino_catalog_registry_cluster_enabled_idx
     ON trino_catalog_registry (cluster_id) WHERE enabled;
 
--- Reserved names (mirror of ReservedName in CatalogRow.java). The DB-level
--- CHECK is the first line of defense; the plugin's CatalogRow constructor is
--- the second. If someone bypasses the plugin (manual INSERT), this catches it.
+-- Reserved names + format mirror CatalogRow.java. The DB-level CHECK is
+-- the first line of defense; the plugin's CatalogRow constructor is the
+-- second. If someone bypasses the plugin (manual INSERT), this catches it.
 ALTER TABLE trino_catalog_registry
     DROP CONSTRAINT IF EXISTS trino_catalog_registry_name_format;
 ALTER TABLE trino_catalog_registry
@@ -52,9 +65,21 @@ ALTER TABLE trino_catalog_registry
        AND catalog_name NOT IN ('system', 'jmx', 'tpch', 'tpcds', 'memory')
        AND connector_name ~ '^[a-z][a-z0-9_]{0,62}$');
 
+ALTER TABLE trino_catalog_registry
+    DROP CONSTRAINT IF EXISTS trino_catalog_registry_sync_status_format;
+ALTER TABLE trino_catalog_registry
+    ADD CONSTRAINT trino_catalog_registry_sync_status_format
+    CHECK (sync_status IN ('pending', 'synced', 'error'));
+
+ALTER TABLE trino_catalog_registry
+    DROP CONSTRAINT IF EXISTS trino_catalog_registry_updated_by_format;
+ALTER TABLE trino_catalog_registry
+    ADD CONSTRAINT trino_catalog_registry_updated_by_format
+    CHECK (updated_by IN ('baleia', 'trino'));
+
 -- ════════════════════════════════════════════════════════════════════════
 -- Seed row: a working tpch catalog so T1/T2 can pass on a clean `up`.
--- Use the built-in tpch connector — no external service required.
+-- Uses the built-in tpch connector — no external service required.
 -- ════════════════════════════════════════════════════════════════════════
 INSERT INTO trino_catalog_registry
     (cluster_id, catalog_name, connector_name, properties,

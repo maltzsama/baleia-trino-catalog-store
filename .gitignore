@@ -528,3 +528,4 @@ gradle-wrapper.properties
 gradle-wrapper.jar
 gradle/wrapper/
 
+tmp/
