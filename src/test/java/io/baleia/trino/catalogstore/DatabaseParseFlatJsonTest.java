@@ -48,4 +48,10 @@ class DatabaseParseFlatJsonTest
         assertThrows(IllegalArgumentException.class,
                 () -> Database.parseFlatJson("{invalid json"));
     }
+
+    @Test
+    void parsesEmptyObject()
+    {
+        assertEquals(Map.of(), Database.parseFlatJson("{}"));
+    }
 }

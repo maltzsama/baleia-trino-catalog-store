@@ -21,13 +21,11 @@ public class BaleiaStoredCatalog
         implements StoredCatalog
 {
     private final CatalogName name;
-    private final CatalogRow row;
     private final Map<String, String> resolvedProperties;
     private final ConnectorName connectorName;
 
     public BaleiaStoredCatalog(CatalogRow row, ConnectorName connectorName, Map<String, String> resolvedProperties)
     {
-        this.row = row;
         this.name = new CatalogName(row.catalogName());
         this.connectorName = connectorName;
         this.resolvedProperties = ImmutableMap.copyOf(resolvedProperties);

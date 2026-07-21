@@ -22,8 +22,7 @@
 -- UUID for trino_clusters.id. The plugin joins by
 -- trino_clusters.name, so id type is opaque to it; we keep the same type
 -- as the canonical migration to avoid a surprise during integration tests.
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
-
+-- gen_random_uuid() is core since PostgreSQL 13; pgcrypto is not needed.
 CREATE TABLE IF NOT EXISTS trino_clusters (
     id              uuid         PRIMARY KEY DEFAULT gen_random_uuid(),
     name            text         NOT NULL UNIQUE,

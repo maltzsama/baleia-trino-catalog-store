@@ -15,6 +15,7 @@ public class BaleiaCatalogStoreConfig
     private String password;
     private String clusterName = "default";
     private Duration connectTimeout = new Duration(10, SECONDS);
+    private Duration socketTimeout = new Duration(30, SECONDS);
 
     @NotNull
     public String getJdbcUrl()
@@ -81,6 +82,19 @@ public class BaleiaCatalogStoreConfig
     public BaleiaCatalogStoreConfig setConnectTimeout(Duration connectTimeout)
     {
         this.connectTimeout = connectTimeout;
+        return this;
+    }
+
+    public Duration getSocketTimeout()
+    {
+        return socketTimeout;
+    }
+
+    @Config("baleia.socket-timeout")
+    @ConfigDescription("Max time waiting for a socket read after connection is established; e.g. \"30s\". Default 30s")
+    public BaleiaCatalogStoreConfig setSocketTimeout(Duration socketTimeout)
+    {
+        this.socketTimeout = socketTimeout;
         return this;
     }
 }

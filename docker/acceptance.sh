@@ -25,6 +25,21 @@ declare -a RESULTS=()
 pass() { RESULTS+=("PASS  $1"); }
 fail() { RESULTS+=("FAIL  $1 -> $2"); }
 
+# B9a: Pre-check that the stack is up.
+if ! docker compose ps --services --filter status=running 2>/dev/null | grep -qx postgres; then
+    echo "ERRO: the stack is not running. Run 'docker compose up -d' in this directory first." >&2
+    exit 1
+fi
+
+# B9b: Cleanup orphan catalogs on interrupt / exit.
+cleanup() {
+    "${TRINO[@]}" "DROP CATALOG IF EXISTS tpch_dois" >/dev/null 2>&1 || true
+    "${TRINO[@]}" "DROP CATALOG IF EXISTS seg"       >/dev/null 2>&1 || true
+    "${PSQL[@]}" "UPDATE trino_catalog_registry SET enabled = false
+                   WHERE catalog_name IN ('tpch_dois', 'seg', 'quebrado');" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+
 # Wait for trino CLI to respond; used after `docker compose restart trino`.
 wait_for_trino() {
     for _ in {1..60}; do
@@ -99,9 +114,9 @@ docker compose restart trino >/dev/null 2>&1
 if ! wait_for_trino; then
     fail "T6 dropped catalog stays dropped" "Trino did not respond within 60s after restart"
 elif "${TRINO[@]}" "SHOW CATALOGS" 2>/dev/null | grep -qE '^[[:space:]]*tpch_dois[[:space:]]*$'; then
-    fail "T6 dropped catalog stays dropped" "tpch_dois returned after restart"
+    fail "T6b dropped catalog stays dropped" "tpch_dois returned after restart"
 else
-    pass "T6 dropped catalog stays dropped"
+    pass "T6b dropped catalog stays dropped"
 fi
 
 # ── T7 — corrupted row does not break boot ────────────────────────────────────
@@ -110,11 +125,12 @@ VALUES ((SELECT id FROM trino_clusters WHERE name='default'),
         'quebrado', 'tpch', '{\"tpch.splits-per-node\": 4}'::jsonb, 'baleia')
 ON CONFLICT (cluster_id, catalog_name) DO UPDATE
   SET properties = EXCLUDED.properties, enabled = true, sync_status = 'pending', sync_error = NULL;" >/dev/null 2>&1
+ts=$(date -u +%Y-%m-%dT%H:%M:%S)
 docker compose restart trino >/dev/null 2>&1
 if ! wait_for_trino; then
     fail "T7 corrupted row skipped" "Trino did not respond within 60s after broken-row restart"
 else
-    if docker compose logs trino 2>&1 | grep -q "Catalog 'quebrado' skipped"; then
+    if docker compose logs --since "$ts" trino 2>&1 | grep -q "Catalog 'quebrado' skipped"; then
         if "${TRINO[@]}" "SELECT count(*) FROM tpch_teste.tiny.nation" 2>/dev/null | tr -d '[:space:]' | grep -q 25; then
             status=$("${PSQL[@]}" "SELECT sync_status FROM trino_catalog_registry WHERE catalog_name = 'quebrado';")
             if [[ "$status" == "error" ]]; then
@@ -137,21 +153,35 @@ fi
 # to @baleia-secret[...] because the Trino CLI interprets ${...} as a
 # variable expansion before the SQL reaches our SecretResolver.
 "${TRINO[@]}" "CREATE CATALOG seg USING tpch WITH (\"tpch.splits-per-node\" = '@baleia-secret[tpch_teste:tpch.splits-per-node]')" >/dev/null 2>&1
-q=$("${TRINO[@]}" "SELECT query FROM system.runtime.queries WHERE query LIKE 'CREATE CATALOG seg%' ORDER BY query_id DESC LIMIT 1" 2>/dev/null)
-# T8 checks:
-#   1. the placeholder string @baleia-secret[...] is verbatim present in the log;
-#   2. the resolved value does NOT appear in a "key = 'value'" shape.
+
+# T8a — the resolution actually worked (the catalog exists)
+if "${TRINO[@]}" "SHOW CATALOGS" 2>/dev/null | grep -qE '^[[:space:]]*seg[[:space:]]*$'; then
+    pass "T8a catalog created with resolved secret"
+else
+    fail "T8a catalog created with resolved secret" "catalog 'seg' missing — CREATE CATALOG failed"
+fi
+
+# T8b — the registry stores the REAL resolved value, never the placeholder
+resolved_val=$("${PSQL[@]}" "SELECT properties->>'tpch.splits-per-node' FROM trino_catalog_registry WHERE catalog_name = 'seg';")
+if [[ "$resolved_val" == "4" ]]; then
+    pass "T8b registry stores the resolved value"
+else
+    fail "T8b registry stores the resolved value" "expected '4', got '$resolved_val'"
+fi
+
+# T8c — placeholder preserved in query log, resolved value NOT leaked
+q=$("${TRINO[@]}" "SELECT query FROM system.runtime.queries WHERE query LIKE 'CREATE CATALOG seg USING%' ORDER BY query_id DESC LIMIT 1" 2>/dev/null)
 if printf '%s' "$q" | grep -Fq '@baleia-secret[tpch_teste:tpch.splits-per-node]'; then
     if ! printf '%s' "$q" | grep -qE '"tpch\.splits-per-node"[[:space:]]*=[[:space:]]*'"'"'4'"'"''; then
-        pass "T8 placeholder preserved in query log, resolved value not leaked"
+        pass "T8c placeholder preserved in query log, resolved value not leaked"
     else
-        fail "T8 secret not leaked" "query log shows resolved value '4' inline"
+        fail "T8c secret not leaked" "query log shows resolved value '4' inline"
     fi
 else
-    fail "T8 secret not leaked" "placeholder not present in query log"
+    fail "T8c secret not leaked" "placeholder not present in query log"
 fi
 # Best-effort cleanup: drop the seg catalog if it survived.
-"${TRINO[@]}" "DROP CATALOG seg" >/dev/null 2>&1 || true
+"${TRINO[@]}" "DROP CATALOG IF EXISTS seg" >/dev/null 2>&1 || true
 "${PSQL[@]}" "UPDATE trino_catalog_registry SET enabled = false WHERE catalog_name = 'seg';" >/dev/null 2>&1
 
 # ── T9 — reserved name rejected ─────────────────────────────────────────────────

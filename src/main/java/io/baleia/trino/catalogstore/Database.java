@@ -18,6 +18,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import static io.trino.spi.StandardErrorCode.CATALOG_STORE_ERROR;
 import static java.lang.String.format;
@@ -35,6 +36,15 @@ public class Database
 
     /** M4: cap a `sync_error` write so a stack trace or large blob can't blow up the column. */
     private static final int SYNC_ERROR_MAX = 1000;
+
+    /** B4: SQLStates beyond class 08 that still warrant retry. */
+    private static final Set<String> RETRYABLE_SQL_STATES = Set.of(
+            "57P01",   // admin_shutdown
+            "57P02",   // crash_shutdown
+            "57P03",   // cannot_connect_now — Postgres still starting up
+            "53300",   // too_many_connections
+            "40001",   // serialization_failure
+            "40P01");  // deadlock_detected
 
     private static final String SELECT_ALL = """
             SELECT r.catalog_name, r.connector_name, r.properties::text
@@ -88,7 +98,6 @@ public class Database
 
     private final PGSimpleDataSource dataSource;
     private final String clusterName;
-    private final Duration connectTimeout;
 
     // M2: validate the cluster row exists once per Database instance; flip on first hit.
     private volatile boolean clusterValidated;
@@ -97,14 +106,27 @@ public class Database
     public Database(BaleiaCatalogStoreConfig config)
     {
         this.clusterName = config.getClusterName();
-        this.connectTimeout = config.getConnectTimeout();
         PGSimpleDataSource ds = new PGSimpleDataSource();
         ds.setURL(config.getJdbcUrl());
         ds.setUser(config.getUsername());
         ds.setPassword(config.getPassword());
-        // PGSimpleDataSource takes int seconds. Airlift reflects "10s"/"1m" for us.
-        ds.setConnectTimeout((int) Math.max(0, Math.min(Integer.MAX_VALUE, (long) connectTimeout.getValue(SECONDS))));
+        int connectSecs = ceilSeconds(config.getConnectTimeout());
+        ds.setConnectTimeout(connectSecs);   // TCP handshake
+        ds.setLoginTimeout(connectSecs);     // auth/SSL — B2: the uncovered window
+        ds.setSocketTimeout(ceilSeconds(config.getSocketTimeout()));  // reads after connect
         this.dataSource = ds;
+    }
+
+    /**
+     * B2: PGSimpleDataSource only accepts whole seconds. Round UP so "1500ms" doesn't silently
+     * become 1s, and clamp to minimum 1s (0 would mean "no timeout" in the driver — the opposite
+     * of what the user asked for).
+     */
+    private static int ceilSeconds(Duration d)
+    {
+        long ms = d.toMillis();
+        long secs = (ms + 999) / 1000;
+        return (int) Math.max(1, Math.min(Integer.MAX_VALUE, secs));
     }
 
     @FunctionalInterface
@@ -131,11 +153,15 @@ public class Database
             }
             catch (SQLException e) {
                 last = e;
+                if (!isRetryable(e)) {
+                    throw new TrinoException(CATALOG_STORE_ERROR,
+                            format("Permanent Baleia DB error (SQLState=%s): %s", e.getSQLState(), e.getMessage()), e);
+                }
                 if (attempt == MAX_CONNECT_ATTEMPTS) {
                     break;
                 }
-                log.warn("Baleia DB connect attempt %d/%d failed: %s. Retrying in %dms",
-                        attempt, MAX_CONNECT_ATTEMPTS, e.getMessage(), backoffMs);
+                log.warn("Baleia DB attempt %d/%d failed (SQLState=%s): %s. Retrying in %dms",
+                        attempt, MAX_CONNECT_ATTEMPTS, e.getSQLState(), e.getMessage(), backoffMs);
                 try {
                     Thread.sleep(backoffMs);
                 }
@@ -158,6 +184,20 @@ public class Database
                 format("Failed to connect to Baleia DB after %d attempts (cluster=%s): %s",
                         MAX_CONNECT_ATTEMPTS, clusterName, last == null ? "" : last.getMessage()),
                 last);
+    }
+
+    /**
+     * B4: null SQLState is treated as retryable intentionally: some socket errors arrive
+     * without classification, and failing the boot for missing metadata is worse than
+     * spending five attempts.
+     */
+    private static boolean isRetryable(SQLException e)
+    {
+        String state = e.getSQLState();
+        if (state == null) {
+            return true;
+        }
+        return state.startsWith("08") || RETRYABLE_SQL_STATES.contains(state);
     }
 
     /**
@@ -204,7 +244,7 @@ public class Database
                                 throw e;
                             }
                             log.warn(e, "Catalog '%s' skipped: %s", name, e.getMessage());
-                            markError(name, e.getMessage());
+                            markError(c, name, e.getMessage());
                         }
                     }
                 }
@@ -286,7 +326,21 @@ public class Database
      */
     public void markError(String catalogName, String message)
     {
-        try (Connection c = dataSource.getConnection(); PreparedStatement ps = c.prepareStatement(MARK_ERROR)) {
+        try (Connection c = dataSource.getConnection()) {
+            markError(c, catalogName, message);
+        }
+        catch (SQLException e) {
+            log.warn(e, "Failed to mark error on '%s'", catalogName);
+        }
+    }
+
+    /**
+     * B5: overload that reuses an existing connection. Used inside {@link #loadAll()} to
+     * avoid a second connection handshake for every bad row.
+     */
+    void markError(Connection c, String catalogName, String message)
+    {
+        try (PreparedStatement ps = c.prepareStatement(MARK_ERROR)) {
             ps.setString(1, truncate(message, SYNC_ERROR_MAX));
             ps.setString(2, clusterName);
             ps.setString(3, catalogName);

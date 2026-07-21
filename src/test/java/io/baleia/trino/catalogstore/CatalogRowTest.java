@@ -68,6 +68,21 @@ class CatalogRowTest
     }
 
     @Test
+    void acceptsNameAtMaximumLength()
+    {
+        String name = "a".repeat(63);
+        CatalogRow row = new CatalogRow(name, "tpch", Map.of());
+        assertEquals(name, row.catalogName());
+    }
+
+    @Test
+    void rejectsNameOverMaximumLength()
+    {
+        assertThrows(IllegalArgumentException.class,
+                () -> new CatalogRow("a".repeat(64), "tpch", Map.of()));
+    }
+
+    @Test
     void propsAreImmutable()
     {
         CatalogRow row = new CatalogRow("vendas", "iceberg", new java.util.HashMap<>(Map.of("a", "b")));

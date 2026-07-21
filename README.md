@@ -5,7 +5,7 @@ directly from the `trino_catalog_registry` table in Baleia's PostgreSQL — elim
 static `.properties` files in `etc/catalog/`.
 
 * **Target Trino version:** 482 (pluggable SPI)
-* **Java:** 25 (`air.java.version=25.0.1`)
+* **Java:** 25+ (tested with `25.0.3-tem`; `air.java.version=25.0.1` is the minimum in Trino's POM)
 * **Airlift:** 435 (same as `dep.airlift.version` in Trino)
 * **Plugin registration:** ServiceLoader in
   `src/main/resources/META-INF/services/io.trino.spi.Plugin`
@@ -38,7 +38,7 @@ statement reaches our `SecretResolver` unmutilated. The placeholder syntax is sa
 
 ## Build
 
-Requires Java 25 (same `<air.java.version>` as Trino 482). Install with SDKMAN:
+Requires Java 25+. Tested with `25.0.3-tem`; `air.java.version=25.0.1` in Trino's POM is the minimum. Install with SDKMAN:
 
 ```bash
 curl -s "https://get.sdkman.io" | bash
@@ -91,7 +91,7 @@ the Go backend's `catalogs.Version` golden test. Do not paste hashes into
 prose (the README had a transcription typo that quietly diverged by two hex chars
 and would have wasted hours chasing a non-existent Go bug). Update the JSON.
 
-The vector file also exercises the two failure modes that bite a Go port:
+The vector file exercises four edge cases that bite a Go port:
 
 * multibyte BMP (`\u2603` snowman — UTF-16 code unit count vs UTF-8 byte count)
 * surrogate pair (`\uD83D\uDE80` rocket — `String.length()` counts 2 surrogates)
@@ -178,36 +178,20 @@ the original prompt did not run T1–T9 before delivery — that's how the
 Postgres 18 volume mount, REVOKE syntax, and jvm.config mount issues
 slipped through. Run it; do not skip it.
 
-Describe output: `acceptance.sh` prints a table and exits non-zero on any
-failure. After running, copy the table back here.
-
-| #   | Test                                  | Status |
-|-----|---------------------------------------|--------|
-| T1  | `SHOW CATALOGS` lists `tpch_teste`     | **PASS** |
-| T2  | `SELECT count(*) FROM tpch_teste.tiny.nation` = 25 | **PASS** |
-| T3  | T2 survives `docker compose restart trino` | **PASS** |
-| T4  | `CREATE CATALOG tpch_dois ...` row lands with `updated_by='trino' sync_status='synced'` | **PASS** |
-| T5  | `tpch_dois` survives a restart | **PASS** |
-| T6  | `DROP CATALOG tpch_dois` → `enabled=false`; not back after restart | **PASS** |
-| T7  | Row with non-string JSON value is skipped; boot survives; `sync_status='error'` | **PASS** |
-| T8  | `CREATE CATALOG` text in `system.runtime.queries` keeps the `@baleia-secret[...]` placeholder, never the resolved value | **PASS** |
-| T9  | `INSERT ... catalog_name='system'` rejected by DB `CHECK` | **PASS** |
-
-All nine tests pass with `docker/acceptance.sh` against `trinodb/trino:482`
-+ `postgres:18` on Java 25.0.3. Plugin jar built from
-`baleia-trino-catalog-store-0.1.0-SNAPSHOT`. Run record:
-```
-PASS  T1 read on boot
-PASS  T2 catalog is queryable
-PASS  T3 read persists across restart
-PASS  T4 CREATE CATALOG persists row
-PASS  T5 DDL persists across restart
-PASS  T6 DROP CATALOG soft-deletes
-PASS  T6 dropped catalog stays dropped
-PASS  T7 corrupted row skipped, error marked, boot survives
-PASS  T8 placeholder preserved in query log, resolved value not leaked
-PASS  T9 reserved name rejected at DB level
-```
+| #    | Test                                  | Status |
+|------|---------------------------------------|--------|
+| T1   | `SHOW CATALOGS` lists `tpch_teste`     | **PASS** |
+| T2   | `SELECT count(*) FROM tpch_teste.tiny.nation` = 25 | **PASS** |
+| T3   | T2 survives `docker compose restart trino` | **PASS** |
+| T4   | `CREATE CATALOG tpch_dois ...` row lands with `updated_by='trino' sync_status='synced'` | **PASS** |
+| T5   | `tpch_dois` survives a restart | **PASS** |
+| T6   | `DROP CATALOG tpch_dois` → `enabled=false` | **PASS** |
+| T6b  | `tpch_dois` does not return after restart | **PASS** |
+| T7   | Row with non-string JSON value is skipped; boot survives; `sync_status='error'` | **PASS** |
+| T8a  | `CREATE CATALOG` with placeholder resolves and catalog appears | **PASS** |
+| T8b  | Registry stores the resolved value, not the placeholder | **PASS** |
+| T8c  | Query log preserves the placeholder, never the resolved value | **PASS** |
+| T9   | `INSERT ... catalog_name='system'` rejected by DB `CHECK` | **PASS** |
 
 ## Upgrading the Trino version
 
@@ -277,6 +261,40 @@ baleia-trino-catalog-store/
         └── resources/
             └── catalog_version_vectors.json        # shared Java/Go golden testdata
 ```
+
+## Design decisions
+
+### No connection pool
+
+The plugin does **not** use a connection pool. `PGSimpleDataSource` is used
+directly, one connection per operation. Rationale:
+
+- The plugin is **not** on the query path. A user running `SELECT` in the editor
+  generates zero plugin connections — the path is Baleia → Trino → Polaris/S3.
+- Plugin I/O is limited to boot (`getCatalogs()`, one connection regardless of
+  catalog count), DDL (`upsert`/`softDelete`, administrative, rare), and
+  `loadProperties()` during DDL to resolve secrets (memoized per source catalog
+  by SecretResolver).
+- A pool adds: idle sockets 24/7 against Postgres in a long-lived process; an
+  extra jar in the plugin classpath (more `LinkageError` surface); and — the
+  decisive factor — the SPI `CatalogStore` has no `close()` method or shutdown
+  hook in Trino 482. A pool created in `CatalogStoreFactory.create()` would
+  never be cleaned up.
+
+**Revisit trigger:** if Trino issue [#26760](https://github.com/trinodb/trino/issues/26760)
+(refresh of external catalog store) is merged and adopted, the plugin would
+poll periodically. At that point a pool becomes appropriate.
+
+### No hyphen normalization in connector_name
+
+Rejection at the boundary, three layers deep: DB `CHECK` constraint,
+`CatalogRow` constructor, and Trino SPI's own `ConnectorName(String)`. No
+compatibility layer — see `docs/spi-482.md` §ConnectorName.
+
+### Don't repackage Trino
+
+The plugin ships as a tarball for side-loading into any existing Trino
+installation. See "Installing in an existing Trino" section.
 
 ## Security notes
 

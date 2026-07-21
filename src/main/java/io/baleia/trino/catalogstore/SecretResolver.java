@@ -2,8 +2,10 @@ package io.baleia.trino.catalogstore;
 
 import com.google.inject.Inject;
 
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -46,23 +48,28 @@ public class SecretResolver
 
     public Map<String, String> resolve(Map<String, String> properties)
     {
+        Map<String, Optional<Map<String, String>>> memo = new HashMap<>();
+
         Map<String, String> out = new LinkedHashMap<>();
         for (Map.Entry<String, String> entry : properties.entrySet()) {
             String key = entry.getKey();
             String value = entry.getValue();
+
+            if (value == null) {
+                throw new IllegalStateException("Property '" + key + "' has a null value");
+            }
+
             Matcher m = PLACEHOLDER.matcher(value);
             if (m.matches()) {
                 String catalog = m.group(1);
                 String secretKey = m.group(2);
-                String resolved = database.loadProperties(catalog)
+
+                String resolved = memo.computeIfAbsent(catalog, database::loadProperties)
                         .map(props -> props.get(secretKey))
                         .orElseThrow(() -> new IllegalStateException(
-                                // Message without the secret value, only the pointer. Goes to the log.
                                 "Could not resolve secret for property '" + key
                                         + "' (reference: " + catalog + ":" + secretKey + ")"));
-                // D4b: reject a resolved value that is itself a placeholder. This also
-                // catches nested references and the degenerate case where the stored
-                // secret is literally the unresolved placeholder text.
+
                 if (PLACEHOLDER.matcher(resolved).matches()) {
                     throw new IllegalStateException(
                             "Resolved secret for '" + key + "' is itself a baleia-secret placeholder; "
@@ -71,9 +78,7 @@ public class SecretResolver
                 out.put(key, resolved);
             }
             else {
-                // D4b: reject values that still look like our placeholder syntax even though
-                // the strict regex did not match (e.g. uppercase, malformed bracket).
-                if (value != null && value.startsWith("@baleia-secret[")) {
+                if (value.startsWith("@baleia-secret[")) {
                     throw new IllegalStateException(
                             "Property '" + key + "' value looks like a baleia-secret placeholder "
                                     + "but does not match the expected pattern: " + value);
