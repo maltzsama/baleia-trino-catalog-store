@@ -530,6 +530,6 @@ gradle/wrapper/
 
 tmp/
 dump*.md
-dump*.sh
+tmp/dump.sh
 dump.md
-dump.sh
+tmp/dump.sh

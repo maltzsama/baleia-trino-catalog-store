@@ -13,16 +13,10 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 
 import static io.trino.spi.StandardErrorCode.CATALOG_STORE_ERROR;
 import static java.lang.String.format;
-import static java.util.concurrent.TimeUnit.SECONDS;
 
 public class Database
 {
