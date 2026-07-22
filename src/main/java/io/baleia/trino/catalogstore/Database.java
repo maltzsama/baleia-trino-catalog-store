@@ -18,134 +18,128 @@ import java.util.*;
 import static io.trino.spi.StandardErrorCode.CATALOG_STORE_ERROR;
 import static java.lang.String.format;
 
-public class Database
-{
+public class Database {
     private static final Logger log = Logger.get(Database.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    /** D3: total attempts on a full connection failure, with exponential backoff. */
+    /**
+     * D3: total attempts on a full connection failure, with exponential backoff.
+     */
     private static final int MAX_CONNECT_ATTEMPTS = 5;
     private static final long INITIAL_BACKOFF_MS = 2_000L;
     private static final long MAX_BACKOFF_MS = 30_000L;
 
-    /** M4: cap a `sync_error` write so a stack trace or large blob can't blow up the column. */
+    /**
+     * M4: cap a `sync_error` write so a stack trace or large blob can't blow up the
+     * column.
+     */
     private static final int SYNC_ERROR_MAX = 1000;
 
     /** B4: SQLStates beyond class 08 that still warrant retry. */
     private static final Set<String> RETRYABLE_SQL_STATES = Set.of(
-            "57P01",   // admin_shutdown
-            "57P02",   // crash_shutdown
-            "57P03",   // cannot_connect_now — Postgres still starting up
-            "53300",   // too_many_connections
-            "40001",   // serialization_failure
-            "40P01");  // deadlock_detected
+            "57P01", // admin_shutdown
+            "57P02", // crash_shutdown
+            "57P03", // cannot_connect_now — Postgres still starting up
+            "53300", // too_many_connections
+            "40001", // serialization_failure
+            "40P01"); // deadlock_detected
 
-    private static final String SELECT_ALL = """
-            SELECT r.catalog_name, r.connector_name, r.properties::text
-              FROM trino_catalog_registry r
-              JOIN trino_clusters c ON c.id = r.cluster_id
-             WHERE c.name = ? AND r.enabled
-             ORDER BY r.catalog_name
-            """;
+    private static final String SELECT_ALL = "SELECT r.catalog_name, r.connector_name, r.properties::text " +
+            "FROM trino_catalog_registry r " +
+            "JOIN trino_clusters c ON c.id = r.cluster_id " +
+            "WHERE c.name = ? AND r.enabled " +
+            "ORDER BY r.catalog_name";
 
-    private static final String SELECT_ONE = """
-            SELECT r.properties::text
-              FROM trino_catalog_registry r
-              JOIN trino_clusters c ON c.id = r.cluster_id
-             WHERE c.name = ? AND r.catalog_name = ? AND r.enabled
-            """;
+    private static final String SELECT_ONE = "SELECT r.properties::text " +
+            "FROM trino_catalog_registry r " +
+            "JOIN trino_clusters c ON c.id = r.cluster_id " +
+            "WHERE c.name = ? AND r.catalog_name = ? AND r.enabled";
 
-    private static final String SELECT_CLUSTER = """
-            SELECT 1 FROM trino_clusters WHERE name = ?
-            """;
+    private static final String SELECT_CLUSTER = "SELECT 1 FROM trino_clusters WHERE name = ?";
 
-    private static final String UPSERT = """
-            INSERT INTO trino_catalog_registry
-                   (cluster_id, catalog_name, connector_name, properties,
-                    catalog_version, enabled, sync_status, sync_error, updated_by, updated_at)
-            VALUES ((SELECT id FROM trino_clusters WHERE name = ?),
-                    ?, ?, ?::jsonb, ?, true, 'synced', NULL, 'trino', now())
-            ON CONFLICT (cluster_id, catalog_name) DO UPDATE SET
-                   connector_name  = EXCLUDED.connector_name,
-                   properties      = EXCLUDED.properties,
-                   catalog_version = EXCLUDED.catalog_version,
-                   enabled         = true,
-                   sync_status     = 'synced',
-                   sync_error      = NULL,
-                   updated_by      = 'trino',
-                   updated_at      = now()
-            """;
+    private static final String UPSERT = "INSERT INTO trino_catalog_registry " +
+            "(cluster_id, catalog_name, connector_name, properties, " +
+            " catalog_version, enabled, sync_status, sync_error, updated_by, updated_at) " +
+            "VALUES ((SELECT id FROM trino_clusters WHERE name = ?), " +
+            "        ?, ?, ?::jsonb, ?, true, 'synced', NULL, 'trino', now()) " +
+            "ON CONFLICT (cluster_id, catalog_name) DO UPDATE SET " +
+            " connector_name  = EXCLUDED.connector_name, " +
+            " properties      = EXCLUDED.properties, " +
+            " catalog_version = EXCLUDED.catalog_version, " +
+            " enabled         = true, " +
+            " sync_status     = 'synced', " +
+            " sync_error      = NULL, " +
+            " updated_by      = 'trino', " +
+            " updated_at      = now()";
 
-    private static final String SOFT_DELETE = """
-            UPDATE trino_catalog_registry r
-               SET enabled = false, updated_by = 'trino', updated_at = now()
-              FROM trino_clusters c
-             WHERE c.id = r.cluster_id AND c.name = ? AND r.catalog_name = ?
-            """;
+    private static final String SOFT_DELETE = "UPDATE trino_catalog_registry r " +
+            "SET enabled = false, updated_by = 'trino', updated_at = now() " +
+            "FROM trino_clusters c " +
+            "WHERE c.id = r.cluster_id AND c.name = ? AND r.catalog_name = ?";
 
-    private static final String MARK_ERROR = """
-            UPDATE trino_catalog_registry r
-               SET sync_status = 'error', sync_error = ?, updated_by = 'trino', updated_at = now()
-              FROM trino_clusters c
-             WHERE c.id = r.cluster_id AND c.name = ? AND r.catalog_name = ?
-            """;
+    private static final String MARK_ERROR = "UPDATE trino_catalog_registry r " +
+            "SET sync_status = 'error', sync_error = ?, updated_by = 'trino', updated_at = now() " +
+            "FROM trino_clusters c " +
+            "WHERE c.id = r.cluster_id AND c.name = ? AND r.catalog_name = ?";
 
     private final PGSimpleDataSource dataSource;
     private final String clusterName;
 
-    // M2: validate the cluster row exists once per Database instance; flip on first hit.
+    // M2: validate the cluster row exists once per Database instance; flip on first
+    // hit.
     private volatile boolean clusterValidated;
 
     @Inject
-    public Database(BaleiaCatalogStoreConfig config)
-    {
+    public Database(BaleiaCatalogStoreConfig config) {
         this.clusterName = config.getClusterName();
         PGSimpleDataSource ds = new PGSimpleDataSource();
         ds.setURL(config.getJdbcUrl());
         ds.setUser(config.getUsername());
         ds.setPassword(config.getPassword());
         int connectSecs = ceilSeconds(config.getConnectTimeout());
-        ds.setConnectTimeout(connectSecs);   // TCP handshake
-        ds.setLoginTimeout(connectSecs);     // auth/SSL — B2: the uncovered window
-        ds.setSocketTimeout(ceilSeconds(config.getSocketTimeout()));  // reads after connect
+        ds.setConnectTimeout(connectSecs); // TCP handshake
+        ds.setLoginTimeout(connectSecs); // auth/SSL — B2: the uncovered window
+        ds.setSocketTimeout(ceilSeconds(config.getSocketTimeout())); // reads after connect
         this.dataSource = ds;
     }
 
     /**
-     * B2: PGSimpleDataSource only accepts whole seconds. Round UP so "1500ms" doesn't silently
-     * become 1s, and clamp to minimum 1s (0 would mean "no timeout" in the driver — the opposite
+     * B2: PGSimpleDataSource only accepts whole seconds. Round UP so "1500ms"
+     * doesn't silently
+     * become 1s, and clamp to minimum 1s (0 would mean "no timeout" in the driver —
+     * the opposite
      * of what the user asked for).
      */
-    private static int ceilSeconds(Duration d)
-    {
+    private static int ceilSeconds(Duration d) {
         long ms = d.toMillis();
         long secs = (ms + 999) / 1000;
         return (int) Math.max(1, Math.min(Integer.MAX_VALUE, secs));
     }
 
     @FunctionalInterface
-    private interface SqlAction<T>
-    {
+    private interface SqlAction<T> {
         T apply(Connection c) throws Exception;
     }
 
     /**
-     * D3: connection acquisitions go through retry-with-backoff, then fail-fast on exhaustion.
-     * The action runs on the established connection; retry happens only on SQLException
-     * (transient DB unavailability). Non-SQL exceptions from the action propagate immediately
-     * so a permanent error (constraint violation, malformed JSON, missing cluster) does not
+     * D3: connection acquisitions go through retry-with-backoff, then fail-fast on
+     * exhaustion.
+     * The action runs on the established connection; retry happens only on
+     * SQLException
+     * (transient DB unavailability). Non-SQL exceptions from the action propagate
+     * immediately
+     * so a permanent error (constraint violation, malformed JSON, missing cluster)
+     * does not
      * waste five rounds of retry.
      */
-    private <T> T retrying(SqlAction<T> action)
-    {
+    private <T> T retrying(SqlAction<T> action) {
         long backoffMs = INITIAL_BACKOFF_MS;
         SQLException last = null;
         for (int attempt = 1; attempt <= MAX_CONNECT_ATTEMPTS; attempt++) {
             try (Connection c = dataSource.getConnection()) {
                 validateClusterOnce(c);
                 return action.apply(c);
-            }
-            catch (SQLException e) {
+            } catch (SQLException e) {
                 last = e;
                 if (!isRetryable(e)) {
                     throw new TrinoException(CATALOG_STORE_ERROR,
@@ -158,15 +152,13 @@ public class Database
                         attempt, MAX_CONNECT_ATTEMPTS, e.getSQLState(), e.getMessage(), backoffMs);
                 try {
                     Thread.sleep(backoffMs);
-                }
-                catch (InterruptedException ie) {
+                } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();
                     throw new TrinoException(CATALOG_STORE_ERROR,
                             "Interrupted during Baleia DB retry", ie);
                 }
                 backoffMs = Math.min(backoffMs * 2, MAX_BACKOFF_MS);
-            }
-            catch (Exception e) {
+            } catch (Exception e) {
                 // Non-SQL exception from validate or action: do not retry, propagate.
                 if (e instanceof RuntimeException re) {
                     throw re;
@@ -181,12 +173,13 @@ public class Database
     }
 
     /**
-     * B4: null SQLState is treated as retryable intentionally: some socket errors arrive
-     * without classification, and failing the boot for missing metadata is worse than
+     * B4: null SQLState is treated as retryable intentionally: some socket errors
+     * arrive
+     * without classification, and failing the boot for missing metadata is worse
+     * than
      * spending five attempts.
      */
-    private static boolean isRetryable(SQLException e)
-    {
+    private static boolean isRetryable(SQLException e) {
         String state = e.getSQLState();
         if (state == null) {
             return true;
@@ -195,12 +188,13 @@ public class Database
     }
 
     /**
-     * M2: confirm the cluster row exists. Called once per Database lifetime. On a missing row
-     * throws a non-retry RuntimeException so retrying() surfaces it immediately as a fail-fast.
+     * M2: confirm the cluster row exists. Called once per Database lifetime. On a
+     * missing row
+     * throws a non-retry RuntimeException so retrying() surfaces it immediately as
+     * a fail-fast.
      */
     private void validateClusterOnce(Connection c)
-            throws SQLException
-    {
+            throws SQLException {
         if (clusterValidated) {
             return;
         }
@@ -209,7 +203,8 @@ public class Database
             try (ResultSet rs = ps.executeQuery()) {
                 if (!rs.next()) {
                     throw new TrinoException(CATALOG_STORE_ERROR,
-                            format("Cluster '%s' not found in trino_clusters. Check baleia.cluster-name.", clusterName));
+                            format("Cluster '%s' not found in trino_clusters. Check baleia.cluster-name.",
+                                    clusterName));
                 }
             }
         }
@@ -217,12 +212,13 @@ public class Database
     }
 
     /**
-     * Load all enabled rows. Per-row parse/resolve failures log + markError and skip the row
-     * (a single bad row must not prevent Trino from starting). Connection-level failure
+     * Load all enabled rows. Per-row parse/resolve failures log + markError and
+     * skip the row
+     * (a single bad row must not prevent Trino from starting). Connection-level
+     * failure
      * bubbles up as TrinoException and fails the boot — see D3.
      */
-    public List<CatalogRow> loadAll()
-    {
+    public List<CatalogRow> loadAll() {
         List<CatalogRow> rows = retrying(c -> {
             List<CatalogRow> out = new ArrayList<>();
             try (PreparedStatement ps = c.prepareStatement(SELECT_ALL)) {
@@ -232,8 +228,7 @@ public class Database
                         String name = rs.getString(1);
                         try {
                             out.add(new CatalogRow(name, rs.getString(2), parseFlatJson(rs.getString(3))));
-                        }
-                        catch (RuntimeException e) {
+                        } catch (RuntimeException e) {
                             if (e instanceof TrinoException) {
                                 throw e;
                             }
@@ -249,8 +244,7 @@ public class Database
         return rows;
     }
 
-    public Optional<Map<String, String>> loadProperties(String catalogName)
-    {
+    public Optional<Map<String, String>> loadProperties(String catalogName) {
         return retrying(c -> {
             try (PreparedStatement ps = c.prepareStatement(SELECT_ONE)) {
                 ps.setString(1, clusterName);
@@ -265,8 +259,7 @@ public class Database
         });
     }
 
-    public void upsert(CatalogRow row, String version)
-    {
+    public void upsert(CatalogRow row, String version) {
         try {
             retrying(c -> {
                 try (PreparedStatement ps = c.prepareStatement(UPSERT)) {
@@ -279,11 +272,9 @@ public class Database
                 }
                 return null;
             });
-        }
-        catch (TrinoException e) {
+        } catch (TrinoException e) {
             throw e;
-        }
-        catch (RuntimeException e) {
+        } catch (RuntimeException e) {
             // N4: surface as CATALOG_STORE_ERROR so the client / Lens can categorize.
             // Crucially do NOT swallow — see Trino bug #23557: in-memory state must
             // not survive if the row was not persisted.
@@ -292,8 +283,7 @@ public class Database
         }
     }
 
-    public void softDelete(String catalogName)
-    {
+    public void softDelete(String catalogName) {
         try {
             retrying(c -> {
                 try (PreparedStatement ps = c.prepareStatement(SOFT_DELETE)) {
@@ -303,11 +293,9 @@ public class Database
                 }
                 return null;
             });
-        }
-        catch (TrinoException e) {
+        } catch (TrinoException e) {
             throw e;
-        }
-        catch (RuntimeException e) {
+        } catch (RuntimeException e) {
             throw new TrinoException(CATALOG_STORE_ERROR,
                     format("Failed to remove catalog '%s': %s", catalogName, e.getMessage()), e);
         }
@@ -315,39 +303,36 @@ public class Database
 
     /**
      * Best-effort write of a failure marker for a single bad catalog. Visible to
-     * {@link BaleiaCatalogStore} so eager resolution failures in {@code getCatalogs()}
+     * {@link BaleiaCatalogStore} so eager resolution failures in
+     * {@code getCatalogs()}
      * can be marked the same way parse failures in {@code loadAll()} already are.
      */
-    public void markError(String catalogName, String message)
-    {
+    public void markError(String catalogName, String message) {
         try (Connection c = dataSource.getConnection()) {
             markError(c, catalogName, message);
-        }
-        catch (SQLException e) {
+        } catch (SQLException e) {
             log.warn(e, "Failed to mark error on '%s'", catalogName);
         }
     }
 
     /**
-     * B5: overload that reuses an existing connection. Used inside {@link #loadAll()} to
+     * B5: overload that reuses an existing connection. Used inside
+     * {@link #loadAll()} to
      * avoid a second connection handshake for every bad row.
      */
-    void markError(Connection c, String catalogName, String message)
-    {
+    void markError(Connection c, String catalogName, String message) {
         try (PreparedStatement ps = c.prepareStatement(MARK_ERROR)) {
             ps.setString(1, truncate(message, SYNC_ERROR_MAX));
             ps.setString(2, clusterName);
             ps.setString(3, catalogName);
             ps.executeUpdate();
-        }
-        catch (SQLException e) {
+        } catch (SQLException e) {
             // Best-effort: if we can't even write the error, log and move on.
             log.warn(e, "Failed to mark error on '%s'", catalogName);
         }
     }
 
-    private static String truncate(String s, int max)
-    {
+    private static String truncate(String s, int max) {
         if (s == null) {
             return null;
         }
@@ -355,8 +340,7 @@ public class Database
     }
 
     /** Accepts only flat string -> string JSON objects. */
-    static Map<String, String> parseFlatJson(String json)
-    {
+    static Map<String, String> parseFlatJson(String json) {
         try {
             JsonNode node = MAPPER.readTree(json);
             if (node == null || !node.isObject()) {
@@ -366,13 +350,13 @@ public class Database
             node.fields().forEachRemaining(e -> {
                 if (!e.getValue().isTextual()) {
                     throw new IllegalArgumentException(
-                            "property '" + e.getKey() + "' is not a string; Trino requires varchar for all catalog properties");
+                            "property '" + e.getKey()
+                                    + "' is not a string; Trino requires varchar for all catalog properties");
                 }
                 out.put(e.getKey(), e.getValue().asText());
             });
             return out;
-        }
-        catch (JsonProcessingException e) {
+        } catch (JsonProcessingException e) {
             throw new IllegalArgumentException("properties is not valid JSON", e);
         }
     }
