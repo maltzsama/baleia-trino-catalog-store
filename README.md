@@ -142,8 +142,10 @@ On every push to `main`, it:
    `feat` → minor, `fix` → patch, `BREAKING CHANGE` → major.
 3. Runs `./mvnw versions:set` to sync the version into `pom.xml`, writes
    `CHANGELOG.md`, commits both, and tags `vX.Y.Z`.
-4. Creates a GitHub Release, which triggers `maven-publish.yml` to deploy the
-   artifact to GitHub Packages. JitPack picks up the new tag automatically.
+4. Creates a GitHub Release.
+5. A second `publish` job checks out the new tag and runs `./mvnw deploy` to
+   publish the artifact to GitHub Packages. JitPack picks up the new tag
+   automatically.
 
 ### Commit conventions
 

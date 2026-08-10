@@ -7,6 +7,8 @@ on:
 jobs:
   release:
     runs-on: ubuntu-latest
+    outputs:
+      released_version: ${{ steps.semantic.outputs.released_version }}
     permissions:
       contents: write
       issues: write
@@ -38,6 +40,45 @@ jobs:
       run: ./mvnw -B verify --file pom.xml
 
     - name: Semantic Release
+      id: semantic
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: npx semantic-release
+      run: |
+        before=$(git ls-remote --tags origin | grep -oE 'refs/tags/v[0-9][^[:space:]]*' | sed 's#refs/tags/##' | sort -V | tail -1)
+        npx semantic-release
+        after=$(git ls-remote --tags origin | grep -oE 'refs/tags/v[0-9][^[:space:]]*' | sed 's#refs/tags/##' | sort -V | tail -1)
+        if [ "$before" != "$after" ]; then
+          echo "released_version=${after#v}" >> "$GITHUB_OUTPUT"
+        fi
+
+  publish:
+    needs: release
+    if: needs.release.outputs.released_version != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Checkout release tag
+      run: |
+        git fetch --tags origin
+        git checkout "v${{ needs.release.outputs.released_version }}"
+
+    - name: Set up JDK 25
+      uses: actions/setup-java@v5
+      with:
+        java-version: '25'
+        distribution: 'oracle'
+        cache: 'maven'
+        server-id: github
+        settings-path: ${{ github.workspace }}
+
+    - name: Publish to GitHub Packages
+      run: |
+        ./mvnw deploy -s $GITHUB_WORKSPACE/settings.xml \
+          -DaltDeploymentRepository=github::default::https://maven.pkg.github.com/maltzsama/baleia-trino-catalog-store
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
