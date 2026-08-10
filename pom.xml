@@ -26,7 +26,11 @@
 
         <guice.version>7.0.0</guice.version>
         <guava.version>33.4.0-jre</guava.version>
-        <jackson.version>2.22</jackson.version>
+        <!-- jackson-annotations diverged from jackson-core/databind at 2.20:
+             annotations uses unpatched versions (2.22), databind/core use
+             patched ones (2.22.1). They must not share a property. -->
+        <jackson.version>2.22.1</jackson.version>
+        <jackson.annotations.version>2.22</jackson.annotations.version>
         <postgresql.version>42.7.5</postgresql.version>
         <junit.version>5.11.4</junit.version>
         <slice.version>2.3</slice.version>
@@ -54,7 +58,7 @@
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-annotations</artifactId>
-            <version>${jackson.version}</version>
+            <version>${jackson.annotations.version}</version>
             <scope>provided</scope>
         </dependency>
 
