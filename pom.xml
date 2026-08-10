@@ -116,12 +116,10 @@
             <version>${junit.version}</version>
             <scope>test</scope>
         </dependency>
-        <dependency>
-            <groupId>org.hibernate.validator</groupId>
-            <artifactId>hibernate-validator</artifactId>
-            <version>8.0.1.Final</version>
-            <scope>test</scope>
-        </dependency>
+        <!-- hibernate-validator comes transitively from airlift configuration
+             (compile scope, managed by the airbase BOM) and IS bundled into the
+             plugin dir. Declaring it here would override the transitive version
+             and scope, which breaks the runtime bundle — do not re-add. -->
         <dependency>
             <groupId>org.glassfish</groupId>
             <artifactId>jakarta.el</artifactId>
