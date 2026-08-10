@@ -1,3 +1,10 @@
+## [0.2.1](https://github.com/maltzsama/baleia-trino-catalog-store/compare/v0.2.0...v0.2.1) (2026-08-10)
+
+
+### Bug Fixes
+
+* align docs, config and env with current dependency versions ([bcfba04](https://github.com/maltzsama/baleia-trino-catalog-store/commit/bcfba044fe78cd0ea3d2193587e257fcb7f463b2))
+
 # [0.2.0](https://github.com/maltzsama/baleia-trino-catalog-store/compare/v0.1.0...v0.2.0) (2026-08-10)
 
 
