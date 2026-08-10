@@ -131,6 +131,36 @@ The vector file exercises four edge cases that bite a Go port:
 Add vectors to `catalog_version_vectors.json`; on first run, the test fails and
 prints the actual hash to copy into the `expected_hash` field.
 
+## Releases (semantic-release)
+
+Releases are automated with [semantic-release](https://semantic-release.gitbook.io/),
+driven by the `Release` GitHub Actions workflow (`.github/workflows/release.yml`).
+On every push to `main`, it:
+
+1. Runs `./mvnw verify` as a gate — a failing build never gets tagged.
+2. Computes the next version from [Conventional Commits](https://www.conventionalcommits.org/):
+   `feat` → minor, `fix` → patch, `BREAKING CHANGE` → major.
+3. Runs `./mvnw versions:set` to sync the version into `pom.xml`, writes
+   `CHANGELOG.md`, commits both, and tags `vX.Y.Z`.
+4. Creates a GitHub Release, which triggers `maven-publish.yml` to deploy the
+   artifact to GitHub Packages. JitPack picks up the new tag automatically.
+
+### Commit conventions
+
+* `feat: ...` — new feature → minor bump.
+* `fix: ...` — bug fix → patch bump.
+* `feat: ...` with a `BREAKING CHANGE:` trailer (or `feat!: ...`) → major bump.
+* Everything else (`build`, `chore`, `docs`, `ci`, `test`, `refactor`,
+  `perf`, `style`) — no new release.
+
+The `chore(release)` commit pushed by semantic-release uses the `[skip ci]`
+trailer and the `GITHUB_TOKEN`, so it does **not** re-trigger the Release
+workflow (no infinite loop).
+
+**Do not edit `CHANGELOG.md` by hand** — it is regenerated on every release.
+The `<version>` in `pom.xml` is `0.1.0-SNAPSHOT` on `main` between releases
+and is bumped only at release time.
+
 ## Docker Compose
 
 The `docker/` directory runs PostgreSQL 18 + Trino 482, mounting the plugin

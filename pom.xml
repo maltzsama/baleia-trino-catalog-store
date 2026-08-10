@@ -130,6 +130,15 @@
 
     <build>
         <plugins>
+            <!-- Pinned so `mvn versions:set` (used by semantic-release) resolves
+                 deterministically without a network metadata lookup. No
+                 executions: this plugin only runs when invoked directly. -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>versions-maven-plugin</artifactId>
+                <version>2.18.0</version>
+            </plugin>
+
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
