@@ -4,6 +4,9 @@ import io.airlift.configuration.Config;
 import io.airlift.configuration.ConfigDescription;
 import io.airlift.configuration.ConfigSecuritySensitive;
 import io.airlift.units.Duration;
+import jakarta.validation.constraints.AssertTrue;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 
 import static java.util.concurrent.TimeUnit.SECONDS;
@@ -16,6 +19,9 @@ public class BaleiaCatalogStoreConfig
     private String clusterName = "default";
     private Duration connectTimeout = new Duration(10, SECONDS);
     private Duration socketTimeout = new Duration(30, SECONDS);
+    private int maxConnectAttempts = 5;
+    private Duration initialBackoff = new Duration(2, SECONDS);
+    private Duration maxBackoff = new Duration(30, SECONDS);
 
     @NotNull
     public String getJdbcUrl()
@@ -96,5 +102,56 @@ public class BaleiaCatalogStoreConfig
     {
         this.socketTimeout = socketTimeout;
         return this;
+    }
+
+    @Min(1)
+    @Max(20)
+    public int getMaxConnectAttempts()
+    {
+        return maxConnectAttempts;
+    }
+
+    @Config("baleia.max-connect-attempts")
+    @ConfigDescription("Total attempts on a full connection failure, with exponential backoff. Default 5")
+    public BaleiaCatalogStoreConfig setMaxConnectAttempts(int maxConnectAttempts)
+    {
+        this.maxConnectAttempts = maxConnectAttempts;
+        return this;
+    }
+
+    public Duration getInitialBackoff()
+    {
+        return initialBackoff;
+    }
+
+    @Config("baleia.initial-backoff")
+    @ConfigDescription("Backoff after the first failed attempt; doubles each attempt up to max-backoff. Default 2s")
+    public BaleiaCatalogStoreConfig setInitialBackoff(Duration initialBackoff)
+    {
+        this.initialBackoff = initialBackoff;
+        return this;
+    }
+
+    public Duration getMaxBackoff()
+    {
+        return maxBackoff;
+    }
+
+    @Config("baleia.max-backoff")
+    @ConfigDescription("Upper bound on the exponential backoff between retry attempts. Default 30s")
+    public BaleiaCatalogStoreConfig setMaxBackoff(Duration maxBackoff)
+    {
+        this.maxBackoff = maxBackoff;
+        return this;
+    }
+
+    @AssertTrue(message = "timeouts and backoffs must be strictly positive, and initial-backoff must not exceed max-backoff")
+    public boolean isBackoffConfigurationValid()
+    {
+        return connectTimeout.toMillis() > 0
+                && socketTimeout.toMillis() > 0
+                && initialBackoff.toMillis() > 0
+                && maxBackoff.toMillis() > 0
+                && initialBackoff.toMillis() <= maxBackoff.toMillis();
     }
 }

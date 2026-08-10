@@ -13,7 +13,12 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 
 import static io.trino.spi.StandardErrorCode.CATALOG_STORE_ERROR;
 import static java.lang.String.format;
@@ -21,13 +26,6 @@ import static java.lang.String.format;
 public class Database {
     private static final Logger log = Logger.get(Database.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
-
-    /**
-     * D3: total attempts on a full connection failure, with exponential backoff.
-     */
-    private static final int MAX_CONNECT_ATTEMPTS = 5;
-    private static final long INITIAL_BACKOFF_MS = 2_000L;
-    private static final long MAX_BACKOFF_MS = 30_000L;
 
     /**
      * M4: cap a `sync_error` write so a stack trace or large blob can't blow up the
@@ -84,6 +82,9 @@ public class Database {
 
     private final PGSimpleDataSource dataSource;
     private final String clusterName;
+    private final int maxConnectAttempts;
+    private final long initialBackoffMs;
+    private final long maxBackoffMs;
 
     // M2: validate the cluster row exists once per Database instance; flip on first
     // hit.
@@ -92,6 +93,9 @@ public class Database {
     @Inject
     public Database(BaleiaCatalogStoreConfig config) {
         this.clusterName = config.getClusterName();
+        this.maxConnectAttempts = config.getMaxConnectAttempts();
+        this.initialBackoffMs = config.getInitialBackoff().toMillis();
+        this.maxBackoffMs = config.getMaxBackoff().toMillis();
         PGSimpleDataSource ds = new PGSimpleDataSource();
         ds.setURL(config.getJdbcUrl());
         ds.setUser(config.getUsername());
@@ -110,7 +114,7 @@ public class Database {
      * the opposite
      * of what the user asked for).
      */
-    private static int ceilSeconds(Duration d) {
+    static int ceilSeconds(Duration d) {
         long ms = d.toMillis();
         long secs = (ms + 999) / 1000;
         return (int) Math.max(1, Math.min(Integer.MAX_VALUE, secs));
@@ -133,9 +137,9 @@ public class Database {
      * waste five rounds of retry.
      */
     private <T> T retrying(SqlAction<T> action) {
-        long backoffMs = INITIAL_BACKOFF_MS;
+        long backoffMs = initialBackoffMs;
         SQLException last = null;
-        for (int attempt = 1; attempt <= MAX_CONNECT_ATTEMPTS; attempt++) {
+        for (int attempt = 1; attempt <= maxConnectAttempts; attempt++) {
             try (Connection c = dataSource.getConnection()) {
                 validateClusterOnce(c);
                 return action.apply(c);
@@ -145,11 +149,11 @@ public class Database {
                     throw new TrinoException(CATALOG_STORE_ERROR,
                             format("Permanent Baleia DB error (SQLState=%s): %s", e.getSQLState(), e.getMessage()), e);
                 }
-                if (attempt == MAX_CONNECT_ATTEMPTS) {
+                if (attempt == maxConnectAttempts) {
                     break;
                 }
                 log.warn("Baleia DB attempt %d/%d failed (SQLState=%s): %s. Retrying in %dms",
-                        attempt, MAX_CONNECT_ATTEMPTS, e.getSQLState(), e.getMessage(), backoffMs);
+                        attempt, maxConnectAttempts, e.getSQLState(), e.getMessage(), backoffMs);
                 try {
                     Thread.sleep(backoffMs);
                 } catch (InterruptedException ie) {
@@ -157,7 +161,7 @@ public class Database {
                     throw new TrinoException(CATALOG_STORE_ERROR,
                             "Interrupted during Baleia DB retry", ie);
                 }
-                backoffMs = Math.min(backoffMs * 2, MAX_BACKOFF_MS);
+                backoffMs = Math.min(backoffMs * 2, maxBackoffMs);
             } catch (Exception e) {
                 // Non-SQL exception from validate or action: do not retry, propagate.
                 if (e instanceof RuntimeException re) {
@@ -168,7 +172,7 @@ public class Database {
         }
         throw new TrinoException(CATALOG_STORE_ERROR,
                 format("Failed to connect to Baleia DB after %d attempts (cluster=%s): %s",
-                        MAX_CONNECT_ATTEMPTS, clusterName, last == null ? "" : last.getMessage()),
+                        maxConnectAttempts, clusterName, last == null ? "" : last.getMessage()),
                 last);
     }
 
@@ -179,7 +183,7 @@ public class Database {
      * than
      * spending five attempts.
      */
-    private static boolean isRetryable(SQLException e) {
+    static boolean isRetryable(SQLException e) {
         String state = e.getSQLState();
         if (state == null) {
             return true;
@@ -332,7 +336,7 @@ public class Database {
         }
     }
 
-    private static String truncate(String s, int max) {
+    static String truncate(String s, int max) {
         if (s == null) {
             return null;
         }
