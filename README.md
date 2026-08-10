@@ -6,7 +6,7 @@ static `.properties` files in `etc/catalog/`.
 
 * **Target Trino version:** 482 (pluggable SPI)
 * **Java:** 25+ (tested with `25.0.3-tem`; `air.java.version=25.0.1` is the minimum in Trino's POM)
-* **Airlift:** 435 (same as `dep.airlift.version` in Trino)
+* **Airlift:** 444 (same as `dep.airlift.version` in Trino)
 * **Plugin registration:** ServiceLoader in
   `src/main/resources/META-INF/services/io.trino.spi.Plugin`
 
@@ -85,7 +85,7 @@ The entire `target/baleia-catalog-store/` directory goes to
 Verify the ServiceLoader entry without starting Trino:
 
 ```bash
-unzip -p target/baleia-catalog-store/baleia-trino-catalog-store-0.1.0-SNAPSHOT.jar \
+unzip -p target/baleia-catalog-store/baleia-trino-catalog-store-0.2.0.jar \
     META-INF/services/io.trino.spi.Plugin
 # expected:
 # io.baleia.trino.catalogstore.BaleiaCatalogStorePlugin
