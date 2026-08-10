@@ -50,8 +50,33 @@ sdk install maven
 Build and package:
 
 ```bash
-mvn clean package
+./mvnw clean package
 ls target/baleia-catalog-store/   # plugin jar + runtime dependencies
+```
+
+> `./mvnw` is the Maven Wrapper (pinned to Maven 3.9.9) — use it everywhere;
+> `mvn` also works if you have a compatible Maven installed.
+
+## Tests and quality gates
+
+```bash
+./mvnw verify
+```
+
+`verify` runs, in order:
+
+1. **Unit tests** (`mvn test`) — 42 tests.
+2. **JaCoCo** — coverage report at `target/site/jacoco/index.html`.
+3. **Checkstyle** — `config/checkstyle/checkstyle.xml` (imports, equals/hashCode,
+   empty blocks, etc.).
+4. **SpotBugs** — static analysis (`threshold=Medium`).
+5. **Error Prone** — compiler checks, wired into javac via the Maven plugin.
+
+Reports are also uploaded as artifacts on CI. Dependency vulnerability scanning is
+opt-in because it downloads the NVD database on first run:
+
+```bash
+./mvnw verify -Pdependency-check
 ```
 
 The entire `target/baleia-catalog-store/` directory goes to
@@ -69,15 +94,20 @@ unzip -p target/baleia-catalog-store/baleia-trino-catalog-store-0.1.0-SNAPSHOT.j
 ## Tests
 
 ```bash
-mvn test
+./mvnw test
 ```
 
 Covers:
 
 * `CatalogRowTest` — name validation, reserved words, immutability.
 * `DatabaseParseFlatJsonTest` — flat JSON string→string parser.
+* `DatabaseTest` — retry/backoff classification, timeout rounding, error truncation.
 * `SecretResolverTest` — `@baleia-secret[<cat>:<key>]` substitution; the
   self-reference / malformed-placeholder rejection (D4b).
+* `BaleiaCatalogStoreTest` — getCatalogs (resolution + skip/markError), create,
+  add-or-replace and remove against a recording `Database` stub.
+* `BaleiaCatalogStoreFactoryTest` — Guice wiring via `Bootstrap`.
+* `BaleiaCatalogStoreConfigTest` — defaults and Jakarta validation ranges.
 * `ComputeCatalogVersionTest` — golden SHA-256 (little-endian `putInt`,
   UTF-16LE `putUnencodedChars`) and the shared vector file
   `src/test/resources/catalog_version_vectors.json` — the same file is the
@@ -124,7 +154,9 @@ Mounted configuration:
   `baleia.jdbc-url`, `baleia.username`,
   `baleia.password=${ENV:BALEIA_TRINO_DB_PASSWORD}` (Airlift's own secrets
   resolver substitutes the env var, nothing committed),
-  `baleia.cluster-name`, `baleia.connect-timeout=10s`.
+  `baleia.cluster-name`, `baleia.connect-timeout=10s`, plus the tunable retry
+  knobs `baleia.max-connect-attempts` (default 5), `baleia.initial-backoff`
+  (default 2s) and `baleia.max-backoff` (default 30s).
 * `etc/catalog/` is intentionally **not mounted** — must remain empty.
 
 Important Postgres 18 detail:
@@ -134,9 +166,10 @@ Important Postgres 18 detail:
   moved and `PGDATA` is now `/var/lib/postgresql/18/docker`. Mounting at the old
   path silently drops your data on a recreate.
 * `postgres` has a `pg_isready` healthcheck and `trino` waits on
-  `service_healthy`. The plugin additionally retries with backoff (5 attempts,
-  2s→30s) and fails the boot if it gives up — so a freshly-broken Postgres
-  surfaces as a crash, not as a silent empty `SHOW CATALOGS`.
+  `service_healthy`. The plugin additionally retries with configurable backoff
+  (default 5 attempts, 2s→30s, doubling) and fails the boot if it gives up — so
+  a freshly-broken Postgres surfaces as a crash, not as a silent empty
+  `SHOW CATALOGS`.
 
 `docker/initdb/`:
 
