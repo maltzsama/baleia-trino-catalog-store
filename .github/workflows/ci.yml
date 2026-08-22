@@ -89,10 +89,13 @@ jobs:
         distribution: 'temurin'
         cache: 'maven'
 
+    - name: Convert README to Javadoc overview
+      run: pandoc README.md --standalone --metadata title="Baleia Trino Catalog Store" -o target/overview.html
+
     - name: Generate Javadoc
       env:
         DATA_TRACKING: ${{ secrets.DATA_TRACKING }}
-      run: ./mvnw -B process-resources javadoc:javadoc -Dtrino.version=482
+      run: ./mvnw -B process-resources javadoc:javadoc -Pjavadoc-overview -Dtrino.version=482
 
     - name: Deploy to gh-pages
       run: |

@@ -27,8 +27,6 @@ import static java.util.Objects.requireNonNull;
  * @param catalogName   the catalog name in Trino
  * @param connectorName the connector type (e.g. "iceberg", "tpch")
  * @param properties    flat string-to-string catalog properties
- * @throws NullPointerException     if any argument is null
- * @throws IllegalArgumentException if names are invalid or reserved
  */
 public record CatalogRow(String catalogName, String connectorName, Map<String, String> properties)
 {

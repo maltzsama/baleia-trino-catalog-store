@@ -362,5 +362,19 @@
                 </plugins>
             </build>
         </profile>
+        <profile>
+            <id>javadoc-overview</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-javadoc-plugin</artifactId>
+                        <configuration>
+                            <overview>${project.build.directory}/overview.html</overview>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
     </profiles>
 </project>
