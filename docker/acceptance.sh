@@ -40,7 +40,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Wait for trino CLI to respond; used after `docker compose restart trino`.
+# Wait for trino CLI to respond; used after `docker compose restart trino`
+# and before the first test to ensure the coordinator is fully booted.
 wait_for_trino() {
     for _ in {1..60}; do
         if "${TRINO[@]}" "SELECT 1" 2>/dev/null | grep -qE '^[[:space:]]*1[[:space:]]*$'; then
@@ -50,6 +51,12 @@ wait_for_trino() {
     done
     return 1
 }
+
+# Wait for Trino to be ready before running any tests.
+if ! wait_for_trino; then
+    echo "ERRO: Trino did not respond within 60s after boot." >&2
+    exit 1
+fi
 
 # Reset the seed row to its known state so re-runs are reproducible.
 "${PSQL[@]}" "UPDATE trino_catalog_registry SET enabled = true, sync_status = 'pending', sync_error = NULL WHERE catalog_name = 'tpch_teste';" >/dev/null 2>&1
