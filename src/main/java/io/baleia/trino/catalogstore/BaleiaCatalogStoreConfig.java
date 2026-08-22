@@ -11,6 +11,18 @@ import jakarta.validation.constraints.NotNull;
 
 import static java.util.concurrent.TimeUnit.SECONDS;
 
+/**
+ * Configuration properties for the Baleia Trino Catalog Store plugin.
+ *
+ * <p>Bound via Airlift's {@code @Config} annotations from
+ * {@code etc/catalog-store.properties}. The factory selection itself
+ * ({@code catalog.store=baleia}) lives in {@code etc/config.properties}.
+ *
+ * <p>All timeout and backoff values are validated by
+ * {@link #isBackoffConfigurationValid()} via Jakarta Bean Validation.
+ *
+ * @see BaleiaCatalogStoreFactory
+ */
 public class BaleiaCatalogStoreConfig
 {
     private String jdbcUrl;

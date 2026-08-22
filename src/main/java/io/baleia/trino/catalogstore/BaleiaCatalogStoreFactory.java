@@ -13,6 +13,21 @@ import java.util.Properties;
 
 import static io.airlift.configuration.ConfigBinder.configBinder;
 
+/**
+ * Guice-wired factory that produces a {@link BaleiaCatalogStore}.
+ *
+ * <p>Trino discovers this factory by name ({@code "baleia"}) via
+ * {@code catalog.store=baleia} in {@code etc/config.properties}. The factory
+ * receives its configuration from {@code etc/catalog-store.properties} and
+ * wires the full dependency graph: {@link Database}, {@link SecretResolver},
+ * and {@link BaleiaCatalogStore} as singletons.
+ *
+ * <p>At startup the factory logs the compiled and detected SPI versions to
+ * aid troubleshooting version mismatches at boot time.
+ *
+ * @see BaleiaCatalogStorePlugin
+ * @see BaleiaCatalogStore
+ */
 public class BaleiaCatalogStoreFactory
         implements CatalogStoreFactory
 {

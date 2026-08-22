@@ -19,6 +19,34 @@ import java.util.List;
 import java.util.Map;
 
 
+/**
+ * Trino {@link CatalogStore} implementation backed by Baleia's PostgreSQL.
+ *
+ * <p>This is the core of the plugin. It implements the four SPI methods that
+ * Trino calls to manage catalogs:
+ * <ul>
+ *   <li>{@link #getCatalogs()} — boot path: loads all enabled rows, eagerly
+ *       resolves secrets, and returns {@link StoredCatalog} instances.</li>
+ *   <li>{@link #createCatalogProperties} — DDL path: resolves secrets in the
+ *       user-supplied properties and computes a deterministic SHA-256 version.</li>
+ *   <li>{@link #addOrReplaceCatalog} — persists the catalog row via UPSERT.</li>
+ *   <li>{@link #removeCatalog} — soft-deletes the catalog (sets {@code enabled=false}).</li>
+ * </ul>
+ *
+ * <p>The plugin does <b>not</b> poll. Runtime catalog propagation is the
+ * backend's responsibility via {@code CREATE CATALOG} DDL.
+ *
+ * <p>Error handling follows a two-tier model:
+ * <ul>
+ *   <li>Connection-level failures ({@link TrinoException}) fail the boot.</li>
+ *   <li>Row-level failures (bad JSON, dangling secret reference) log, mark
+ *       {@code sync_status='error'}, and skip the row.</li>
+ * </ul>
+ *
+ * @see Database
+ * @see SecretResolver
+ * @see BaleiaStoredCatalog
+ */
 public class BaleiaCatalogStore
         implements CatalogStore
 {
@@ -34,6 +62,16 @@ public class BaleiaCatalogStore
         this.secretResolver = secretResolver;
     }
 
+    /**
+     * Loads all enabled catalogs from the database, resolves secrets, and
+     * returns them as {@link StoredCatalog} instances.
+     *
+     * <p>Called once at coordinator boot. Each row is processed independently:
+     * a bad row is logged, marked {@code sync_status='error'}, and skipped.
+     * A total database failure retries with exponential backoff, then fails the boot.
+     *
+     * @return an unmodifiable collection of catalogs ready for Trino to load
+     */
     @Override
     public Collection<StoredCatalog> getCatalogs()
     {
@@ -62,6 +100,20 @@ public class BaleiaCatalogStore
         return out.build();
     }
 
+    /**
+     * Resolves secrets in the user-supplied properties and computes a
+     * deterministic {@link CatalogVersion} (SHA-256).
+     *
+     * <p>Called by Trino during {@code CREATE CATALOG}. The returned
+     * {@link CatalogProperties} carries the resolved values and the computed
+     * version — the caller will later pass it to {@link #addOrReplaceCatalog}.
+     *
+     * @param catalogName  the catalog name from the DDL statement
+     * @param connectorName the connector type (e.g. "iceberg", "tpch")
+     * @param properties   raw properties from the DDL, may contain placeholders
+     * @return resolved properties with a deterministic version hash
+     * @throws IllegalStateException if a placeholder cannot be resolved
+     */
     @Override
     public CatalogProperties createCatalogProperties(
             CatalogName catalogName, ConnectorName connectorName, Map<String, String> properties)
@@ -71,6 +123,12 @@ public class BaleiaCatalogStore
         return new CatalogProperties(catalogName, version, connectorName, ImmutableMap.copyOf(resolved));
     }
 
+    /**
+     * Persists a catalog row via UPSERT. Sets {@code sync_status='synced'}
+     * and {@code updated_by='trino'}.
+     *
+     * @param catalogProperties the resolved catalog to persist
+     */
     @Override
     public void addOrReplaceCatalog(CatalogProperties catalogProperties)
     {
@@ -84,6 +142,12 @@ public class BaleiaCatalogStore
         log.info("Catalog '%s' persisted in Baleia (version=%s)", name, version);
     }
 
+    /**
+     * Soft-deletes a catalog by setting {@code enabled=false}. The row
+     * remains in the database for audit purposes.
+     *
+     * @param catalogName the catalog to disable
+     */
     @Override
     public void removeCatalog(CatalogName catalogName)
     {
@@ -98,6 +162,28 @@ public class BaleiaCatalogStore
     // putInt  -> little-endian (Guava)
     // putUnencodedChars -> UTF-16LE (Guava)
     // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Computes a deterministic SHA-256 catalog version.
+     *
+     * <p>This is an exact replica of Trino's {@code FileCatalogStore.computeCatalogVersion}.
+     * The algorithm must match byte-for-byte across Java and any backend
+     * (Go, Rails, etc.) that computes catalog versions.
+     *
+     * <p>Order of hashing:
+     * <ol>
+     *   <li>Fixed prefix {@code "catalog-hash"}</li>
+     *   <li>Length-prefixed catalog name (UTF-16LE)</li>
+     *   <li>Length-prefixed connector name (UTF-16LE)</li>
+     *   <li>Property count (little-endian int)</li>
+     *   <li>Each key-value pair, length-prefixed, in sorted key order</li>
+     * </ol>
+     *
+     * @param catalogName   the catalog name
+     * @param connectorName the connector type
+     * @param properties    the resolved properties map
+     * @return a hex-encoded SHA-256 hash as {@link CatalogVersion}
+     */
     static CatalogVersion computeCatalogVersion(
             CatalogName catalogName, ConnectorName connectorName, Map<String, String> properties)
     {

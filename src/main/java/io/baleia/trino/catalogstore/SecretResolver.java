@@ -71,6 +71,26 @@ public class SecretResolver
         this.secretFileBaseDir = config.getSecretFileBaseDir();
     }
 
+    /**
+     * Resolves all placeholders in the given properties map.
+     *
+     * <p>Each value is checked against the {@code @baleia-secret[...]} pattern.
+     * Non-placeholder values pass through unchanged. The first group of the
+     * match determines the origin scheme:
+     * <ul>
+     *   <li>{@code file:} — reads from a file under {@code baleia.secret-file-base-dir}</li>
+     *   <li>{@code env:} — reads from a process environment variable</li>
+     *   <li>anything else — treated as a catalog name, resolved via {@link Database}</li>
+     * </ul>
+     *
+     * <p>After resolution, every output value is verified to not itself be a
+     * placeholder, catching circular references and malformed inputs.
+     *
+     * @param properties the raw properties from the database or DDL
+     * @return a new map with all placeholders resolved
+     * @throws IllegalStateException if a placeholder cannot be resolved,
+     *         a circular reference is detected, or a malformed placeholder is found
+     */
     public Map<String, String> resolve(Map<String, String> properties)
     {
         Map<String, Optional<Map<String, String>>> memo = new HashMap<>();
@@ -114,6 +134,15 @@ public class SecretResolver
         return out;
     }
 
+    /**
+     * Resolves a {@code @baleia-secret[catalog:key]} reference from the database.
+     *
+     * @param key       the property key (for error messages)
+     * @param catalog   the source catalog name
+     * @param secretKey the key within the catalog's properties
+     * @param memo      per-call memoization cache for catalog properties
+     * @return the resolved value
+     */
     private String resolveCatalog(String key, String catalog, String secretKey,
             Map<String, Optional<Map<String, String>>> memo)
     {
@@ -130,6 +159,16 @@ public class SecretResolver
                                 + "' (reference: " + catalog + ":" + secretKey + ")"));
     }
 
+    /**
+     * Resolves a {@code @baleia-secret[file:name]} reference from a file.
+     *
+     * <p>Reads the file on every call (no cross-call caching) to support
+     * secret rotation without Trino restart. A trailing {@code \n} is stripped.
+     *
+     * @param key      the property key (for error messages)
+     * @param fileName the file name (no path separators, no {@code ..})
+     * @return the file content
+     */
     private String resolveFile(String key, String fileName)
     {
         if (secretFileBaseDir.isEmpty()) {

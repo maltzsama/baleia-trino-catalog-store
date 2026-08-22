@@ -23,6 +23,21 @@ import java.util.Set;
 import static io.trino.spi.StandardErrorCode.CATALOG_STORE_ERROR;
 import static java.lang.String.format;
 
+/**
+ * PostgreSQL data access layer for {@code trino_catalog_registry} and {@code trino_clusters}.
+ *
+ * <p>Uses {@link org.postgresql.ds.PGSimpleDataSource} directly (no connection
+ * pool — see design decisions in README). Each operation acquires a fresh
+ * connection, executes, and closes it. Transient failures are retried with
+ * exponential backoff; permanent failures propagate immediately.
+ *
+ * <p>The query contract (tables, columns, SQL) is documented in the
+ * "Backend requirements" section of the project README. Each backend owns
+ * its own migration; this class only reads and writes a fixed set of columns.
+ *
+ * @see BaleiaCatalogStore
+ * @see CatalogRow
+ */
 public class Database {
     private static final Logger log = Logger.get(Database.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -90,6 +105,14 @@ public class Database {
     // hit.
     private volatile boolean clusterValidated;
 
+    /**
+     * Creates a new database access layer from the given configuration.
+     *
+     * <p>Configures the {@link PGSimpleDataSource} with JDBC URL, credentials,
+     * and timeout values. No connection is established at construction time.
+     *
+     * @param config the plugin configuration
+     */
     @Inject
     public Database(BaleiaCatalogStoreConfig config) {
         this.clusterName = config.getClusterName();
@@ -216,11 +239,13 @@ public class Database {
     }
 
     /**
-     * Load all enabled rows. Per-row parse/resolve failures log + markError and
-     * skip the row
-     * (a single bad row must not prevent Trino from starting). Connection-level
-     * failure
-     * bubbles up as TrinoException and fails the boot — see D3.
+     * Loads all enabled catalog rows for the configured cluster.
+     *
+     * <p>Per-row parse or validation failures are logged and marked
+     * ({@code sync_status='error'}) without aborting the load. A connection-level
+     * failure retries with backoff, then throws {@link TrinoException} to fail the boot.
+     *
+     * @return list of validated catalog rows, never null
      */
     public List<CatalogRow> loadAll() {
         List<CatalogRow> rows = retrying(c -> {
@@ -248,6 +273,16 @@ public class Database {
         return rows;
     }
 
+    /**
+     * Loads the properties of a single enabled catalog.
+     *
+     * <p>Used by {@link SecretResolver} to resolve {@code @baleia-secret[catalog:key]}
+     * references — one database call per referenced catalog, memoized within
+     * a single {@code resolve()} invocation.
+     *
+     * @param catalogName the catalog to look up
+     * @return the parsed properties, or {@link Optional#empty()} if not found
+     */
     public Optional<Map<String, String>> loadProperties(String catalogName) {
         return retrying(c -> {
             try (PreparedStatement ps = c.prepareStatement(SELECT_ONE)) {
@@ -263,6 +298,16 @@ public class Database {
         });
     }
 
+    /**
+     * Inserts or updates a catalog row via {@code UPSERT}.
+     *
+     * <p>Sets {@code sync_status='synced'}, {@code updated_by='trino'}, and
+     * {@code enabled=true}. On conflict ({@code cluster_id, catalog_name}),
+     * all fields are overwritten.
+     *
+     * @param row     the catalog row to persist
+     * @param version the computed catalog version hash
+     */
     public void upsert(CatalogRow row, String version) {
         try {
             retrying(c -> {
@@ -287,6 +332,14 @@ public class Database {
         }
     }
 
+    /**
+     * Soft-deletes a catalog by setting {@code enabled=false}.
+     *
+     * <p>The row remains in the database for audit. The catalog will no longer
+     * appear in {@link #loadAll()} results.
+     *
+     * @param catalogName the catalog to disable
+     */
     public void softDelete(String catalogName) {
         try {
             retrying(c -> {
@@ -336,6 +389,13 @@ public class Database {
         }
     }
 
+    /**
+     * Truncates a string to the given maximum length.
+     *
+     * @param s   the string to truncate, may be null
+     * @param max maximum number of characters
+     * @return the truncated string, or null if the input was null
+     */
     static String truncate(String s, int max) {
         if (s == null) {
             return null;
@@ -343,7 +403,16 @@ public class Database {
         return s.length() > max ? s.substring(0, max) : s;
     }
 
-    /** Accepts only flat string -> string JSON objects. */
+    /**
+     * Parses a flat JSON object into a string-to-string map.
+     *
+     * <p>Rejects non-object JSON, nested values, and non-string values.
+     * Trino requires all catalog properties to be strings.
+     *
+     * @param json a JSON string representing a flat object
+     * @return the parsed properties in insertion order
+     * @throws IllegalArgumentException if the JSON is invalid or contains non-string values
+     */
     static Map<String, String> parseFlatJson(String json) {
         try {
             JsonNode node = MAPPER.readTree(json);
