@@ -27,7 +27,7 @@ services:
       retries: 15
 
   trino:
-    image: trinodb/trino:482
+    image: ${TRINO_IMAGE:-trinodb/trino:482}
     depends_on:
       postgres:
         condition: service_healthy

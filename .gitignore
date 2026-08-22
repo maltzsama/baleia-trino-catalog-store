@@ -534,3 +534,6 @@ tmp/dump.sh
 
 dump.sh
 dump.md
+
+.bloop/
+.metals/
