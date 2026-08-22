@@ -65,6 +65,15 @@ jobs:
     - name: Build plugin against floor (482)
       run: ./mvnw -B package -DskipTests -Dtrino.version=482
 
+    - name: Start Docker stack
+      working-directory: docker
+      env:
+        TRINO_IMAGE: trinodb/trino:${{ matrix.trino }}
+        BALEIA_TRINO_DB_PASSWORD: acceptance
+      run: |
+        docker compose up -d
+        docker compose exec -T postgres pg_isready -U baleia -d baleia
+
     - name: Run acceptance tests against Trino ${{ matrix.trino }}
       working-directory: docker
       env:
