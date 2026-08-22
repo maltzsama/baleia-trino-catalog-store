@@ -1,3 +1,15 @@
+# [0.4.0](https://github.com/maltzsama/baleia-trino-catalog-store/compare/v0.3.0...v0.4.0) (2026-08-22)
+
+
+### Bug Fixes
+
+* added metals e bloop to gitignore ([2570c9a](https://github.com/maltzsama/baleia-trino-catalog-store/commit/2570c9a2378fc07230990cb9e819b2ae868be6dd))
+
+
+### Features
+
+* support Trino 482 and 483 with single artifact ([bf07d2a](https://github.com/maltzsama/baleia-trino-catalog-store/commit/bf07d2a80690f2cafc82888ea3ed6a57ce6aa65e))
+
 # [0.3.0](https://github.com/maltzsama/baleia-trino-catalog-store/compare/v0.2.1...v0.3.0) (2026-08-22)
 
 
