@@ -211,19 +211,17 @@ The vector file exercises four edge cases that bite a Go port:
 Add vectors to `catalog_version_vectors.json`; on first run, the test fails and
 prints the actual hash to copy into the `expected_hash` field.
 
-## Releases (semantic-release)
+## Releases
 
-Releases are automated with [semantic-release](https://semantic-release.gitbook.io/),
+Releases are automated with [Release Please](https://github.com/googleapis/release-please),
 driven by the `Release` GitHub Actions workflow (`.github/workflows/release.yml`).
 On every push to `main`, it:
 
-1. Runs `./mvnw verify` as a gate — a failing build never gets tagged.
-2. Computes the next version from [Conventional Commits](https://www.conventionalcommits.org/):
-   `feat` → minor, `fix` → patch, `BREAKING CHANGE` → major.
-3. Runs `./mvnw versions:set` to sync the version into `pom.xml`, writes
-   `CHANGELOG.md`, commits both, and tags `vX.Y.Z`.
-4. Creates a GitHub Release.
-5. A second `publish` job checks out the new tag and runs `./mvnw deploy` to
+1. Release Please reads [Conventional Commits](https://www.conventionalcommits.org/)
+   and either creates/updates a **Release PR** (bumping `pom.xml` and writing
+   `CHANGELOG.md`) or — if the Release PR was just merged — creates a **GitHub
+   Release** with the new tag.
+2. A `publish` job checks out the release tag and runs `./mvnw deploy` to
    publish the artifact to GitHub Packages. JitPack picks up the new tag
    automatically.
 
@@ -231,17 +229,25 @@ On every push to `main`, it:
 
 * `feat: ...` — new feature → minor bump.
 * `fix: ...` — bug fix → patch bump.
-* `feat: ...` with a `BREAKING CHANGE:` trailer (or `feat!: ...`) → major bump.
+* `feat!: ...` or a `BREAKING CHANGE:` footer → major bump.
 * Everything else (`build`, `chore`, `docs`, `ci`, `test`, `refactor`,
   `perf`, `style`) — no new release.
 
-The `chore(release)` commit pushed by semantic-release uses the `[skip ci]`
-trailer and the `GITHUB_TOKEN`, so it does **not** re-trigger the Release
-workflow (no infinite loop).
+### How it works
 
-**Do not edit `CHANGELOG.md` by hand** — it is regenerated on every release.
-The `<version>` in `pom.xml` is `0.1.0-SNAPSHOT` on `main` between releases
-and is bumped only at release time.
+```
+push to main → Release Please opens/updates Release PR
+                  ↓
+         merge Release PR → creates GitHub Release + tag vX.Y.Z
+                                ↓
+                       publish job → ./mvnw deploy to GitHub Packages
+```
+
+The Release PR is a normal PR — you can review the CHANGELOG entries and the
+version bump before merging. No `npm`, no Node.js, no `.releaserc.json`.
+
+**Do not edit `CHANGELOG.md` by hand** — Release Please regenerates it on
+every release.
 
 ## Docker Compose
 
