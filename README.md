@@ -25,6 +25,22 @@ The plugin does **not** poll — runtime propagation is the backend's responsibi
 via `CREATE CATALOG`. It does **not** build connector properties — all knowledge about
 Polaris, Iceberg, REST catalog lives in the backend; this plugin only transports.
 
+## Supported Trino versions
+
+| Trino | Compiles | Acceptance | Notes |
+|-------|----------|------------|-------|
+| 482   | yes      | yes        | floor — version the artifact is built against |
+| 483   | yes      | yes        | same artifact |
+
+The plugin compiles against the **lowest** supported version and runs on any
+version in the window. One artifact, one release. See
+[`docs/spi-compat.md`](docs/spi-compat.md) for the SPI surface, N5 verification,
+and upgrade procedure.
+
+**Policy:** support the current and previous Trino releases. When a new version
+ships, the floor moves up, the oldest drops out, and the line vanishes from this
+table in the same release.
+
 ## Backend requirements
 
 The plugin is a **reader**. It queries PostgreSQL for catalogs and resolves secrets.

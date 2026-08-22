@@ -2,16 +2,39 @@ package io.baleia.trino.catalogstore;
 
 import com.google.inject.Injector;
 import io.airlift.bootstrap.Bootstrap;
+import io.airlift.log.Logger;
 import io.trino.spi.catalog.CatalogStore;
 import io.trino.spi.catalog.CatalogStoreFactory;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.Map;
+import java.util.Properties;
 
 import static io.airlift.configuration.ConfigBinder.configBinder;
 
 public class BaleiaCatalogStoreFactory
         implements CatalogStoreFactory
 {
+    private static final Logger log = Logger.get(BaleiaCatalogStoreFactory.class);
+
+    private static final String COMPILED_TRINO_VERSION;
+
+    static
+    {
+        String version = "unknown";
+        try (InputStream is = BaleiaCatalogStoreFactory.class.getResourceAsStream("/version.properties")) {
+            if (is != null) {
+                Properties props = new Properties();
+                props.load(is);
+                version = props.getProperty("compiled.trino.version", "unknown");
+            }
+        }
+        catch (IOException ignored) {
+        }
+        COMPILED_TRINO_VERSION = version;
+    }
+
     @Override
     public String getName()
     {
@@ -21,6 +44,11 @@ public class BaleiaCatalogStoreFactory
     @Override
     public CatalogStore create(Map<String, String> config)
     {
+        String detectedVersion = CatalogStore.class.getPackage().getImplementationVersion();
+        log.info("baleia-catalog-store starting; compiled against trino-spi %s, detected: %s",
+                COMPILED_TRINO_VERSION,
+                detectedVersion == null ? "unknown" : detectedVersion);
+
         Bootstrap app = new Bootstrap(binder -> {
             configBinder(binder).bindConfig(BaleiaCatalogStoreConfig.class);
             binder.bind(Database.class).in(com.google.inject.Scopes.SINGLETON);
