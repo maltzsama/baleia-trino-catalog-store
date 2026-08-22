@@ -101,6 +101,8 @@ jobs:
       run: |
         cd target/reports/apidocs
         git init
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
         git checkout -b gh-pages
         git add .
         git commit -m "docs: update Javadoc"
