@@ -13,7 +13,7 @@ public record CatalogRow(String catalogName, String connectorName, Map<String, S
             Pattern.compile("^[a-z][a-z0-9_]{0,62}$");
 
     private static final Set<String> RESERVED =
-            Set.of("system", "jmx", "tpch", "tpcds", "memory");
+            Set.of("system", "jmx", "tpch", "tpcds", "memory", "env", "file");
 
     public CatalogRow
     {

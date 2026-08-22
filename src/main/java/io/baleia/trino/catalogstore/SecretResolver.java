@@ -2,6 +2,11 @@ package io.baleia.trino.catalogstore;
 
 import com.google.inject.Inject;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
+import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -10,9 +15,16 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Replaces {@code @baleia-secret[<catalog>:<key>]} with the actual value from the database.
- * This ensures the CREATE CATALOG text — which Trino logs and exposes in the Web UI —
- * never contains real credentials.
+ * Replaces {@code @baleia-secret[<origin>:<key>]} with the actual value.
+ * Three origin schemes are supported:
+ * <ul>
+ *   <li>{@code @baleia-secret[<catalog>:<key>]} — another row in the database (existing)</li>
+ *   <li>{@code @baleia-secret[file:<name>]} — a file under {@code baleia.secret-file-base-dir} (new)</li>
+ *   <li>{@code @baleia-secret[env:<VAR>]} — an environment variable (new)</li>
+ * </ul>
+ *
+ * <p>The CREATE CATALOG text — which Trino logs and exposes in the Web UI — never
+ * contains real credentials.
  *
  * <p><b>Why not {@code ${baleia-secret:...}}?</b> The Trino CLI (and several other
  * tools in the ecosystem — bash, picocli, Spring) interpret {@code ${...}} as a
@@ -36,14 +48,27 @@ import java.util.regex.Pattern;
 public class SecretResolver
 {
     private static final Pattern PLACEHOLDER =
-            Pattern.compile("^@baleia-secret\\[([a-z][a-z0-9_]{0,62}):([^\\]]+)\\]$");
+            Pattern.compile("^@baleia-secret\\[([^\\]:]+):([^\\]]+)\\]$");
+
+    private static final Pattern CATALOG_NAME =
+            Pattern.compile("^[a-z][a-z0-9_]{0,62}$");
+
+    private static final Pattern FILE_NAME =
+            Pattern.compile("^[A-Za-z0-9._-]+$");
+
+    private static final Pattern ENV_NAME =
+            Pattern.compile("^[A-Z_][A-Z0-9_]*$");
+
+    private static final int FILE_MAX_SIZE = 64 * 1024;
 
     private final Database database;
+    private final String secretFileBaseDir;
 
     @Inject
-    public SecretResolver(Database database)
+    public SecretResolver(Database database, BaleiaCatalogStoreConfig config)
     {
         this.database = database;
+        this.secretFileBaseDir = config.getSecretFileBaseDir();
     }
 
     public Map<String, String> resolve(Map<String, String> properties)
@@ -61,19 +86,19 @@ public class SecretResolver
 
             Matcher m = PLACEHOLDER.matcher(value);
             if (m.matches()) {
-                String catalog = m.group(1);
-                String secretKey = m.group(2);
+                String origin = m.group(1);
+                String identifier = m.group(2);
 
-                String resolved = memo.computeIfAbsent(catalog, database::loadProperties)
-                        .map(props -> props.get(secretKey))
-                        .orElseThrow(() -> new IllegalStateException(
-                                "Could not resolve secret for property '" + key
-                                        + "' (reference: " + catalog + ":" + secretKey + ")"));
+                String resolved = switch (origin) {
+                    case "file" -> resolveFile(key, identifier);
+                    case "env" -> resolveEnv(key, identifier);
+                    default -> resolveCatalog(key, origin, identifier, memo);
+                };
 
                 if (PLACEHOLDER.matcher(resolved).matches()) {
                     throw new IllegalStateException(
                             "Resolved secret for '" + key + "' is itself a baleia-secret placeholder; "
-                                    + "circular reference at " + catalog + ":" + secretKey);
+                                    + "circular reference at " + origin + ":" + identifier);
                 }
                 out.put(key, resolved);
             }
@@ -87,5 +112,114 @@ public class SecretResolver
             }
         }
         return out;
+    }
+
+    private String resolveCatalog(String key, String catalog, String secretKey,
+            Map<String, Optional<Map<String, String>>> memo)
+    {
+        if (!CATALOG_NAME.matcher(catalog).matches()) {
+            throw new IllegalStateException(
+                    "Property '" + key + "' has invalid origin '" + catalog
+                            + "'; expected a catalog name, 'file', or 'env'");
+        }
+
+        return memo.computeIfAbsent(catalog, database::loadProperties)
+                .map(props -> props.get(secretKey))
+                .orElseThrow(() -> new IllegalStateException(
+                        "Could not resolve secret for property '" + key
+                                + "' (reference: " + catalog + ":" + secretKey + ")"));
+    }
+
+    private String resolveFile(String key, String fileName)
+    {
+        if (secretFileBaseDir.isEmpty()) {
+            throw new IllegalStateException(
+                    "Property '" + key + "' uses file: scheme but "
+                            + "baleia.secret-file-base-dir is not configured");
+        }
+
+        if (!FILE_NAME.matcher(fileName).matches()) {
+            throw new IllegalStateException(
+                    "Property '" + key + "' has invalid file name '" + fileName + "'");
+        }
+
+        Path basePath;
+        try {
+            basePath = Path.of(secretFileBaseDir).toAbsolutePath().normalize();
+        }
+        catch (InvalidPathException e) {
+            throw new IllegalStateException(
+                    "Property '" + key + "' has invalid secret-file-base-dir: " + secretFileBaseDir);
+        }
+
+        Path filePath;
+        try {
+            filePath = basePath.resolve(fileName).normalize();
+        }
+        catch (InvalidPathException e) {
+            throw new IllegalStateException(
+                    "Property '" + key + "' has invalid file path for '" + fileName + "'");
+        }
+
+        if (!filePath.startsWith(basePath)) {
+            throw new IllegalStateException(
+                    "Property '" + key + "' file path escapes the base directory: " + fileName);
+        }
+
+        if (!Files.exists(filePath) || !Files.isRegularFile(filePath)) {
+            throw new IllegalStateException(
+                    "Property '" + key + "' references missing file: " + fileName);
+        }
+
+        if (Files.isSymbolicLink(filePath)) {
+            try {
+                Path realPath = filePath.toRealPath();
+                if (!realPath.startsWith(basePath)) {
+                    throw new IllegalStateException(
+                            "Property '" + key + "' symbolic link points outside base directory: " + fileName);
+                }
+            }
+            catch (IOException e) {
+                throw new IllegalStateException(
+                        "Property '" + key + "' cannot resolve symbolic link: " + fileName);
+            }
+        }
+
+        byte[] bytes;
+        try {
+            bytes = Files.readAllBytes(filePath);
+        }
+        catch (IOException e) {
+            throw new IllegalStateException(
+                    "Property '" + key + "' cannot read file: " + fileName);
+        }
+
+        if (bytes.length > FILE_MAX_SIZE) {
+            throw new IllegalStateException(
+                    "Property '" + key + "' file exceeds 64 KiB limit: " + fileName);
+        }
+
+        String content = new String(bytes, StandardCharsets.UTF_8);
+        if (content.endsWith("\n")) {
+            content = content.substring(0, content.length() - 1);
+        }
+
+        return content;
+    }
+
+    private String resolveEnv(String key, String varName)
+    {
+        if (!ENV_NAME.matcher(varName).matches()) {
+            throw new IllegalStateException(
+                    "Property '" + key + "' has invalid environment variable name '" + varName + "'");
+        }
+
+        String value = System.getenv(varName);
+        if (value == null) {
+            throw new IllegalStateException(
+                    "Property '" + key + "' references undefined environment variable: " + varName);
+        }
+
+        return value;
     }
 }

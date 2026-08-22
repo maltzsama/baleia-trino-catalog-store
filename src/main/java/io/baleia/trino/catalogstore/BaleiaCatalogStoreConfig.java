@@ -22,6 +22,7 @@ public class BaleiaCatalogStoreConfig
     private int maxConnectAttempts = 5;
     private Duration initialBackoff = new Duration(2, SECONDS);
     private Duration maxBackoff = new Duration(30, SECONDS);
+    private String secretFileBaseDir = "";
 
     @NotNull
     public String getJdbcUrl()
@@ -142,6 +143,19 @@ public class BaleiaCatalogStoreConfig
     public BaleiaCatalogStoreConfig setMaxBackoff(Duration maxBackoff)
     {
         this.maxBackoff = maxBackoff;
+        return this;
+    }
+
+    public String getSecretFileBaseDir()
+    {
+        return secretFileBaseDir;
+    }
+
+    @Config("baleia.secret-file-base-dir")
+    @ConfigDescription("Directory containing secret files referenced by @baleia-secret[file:...]. Empty disables the file scheme.")
+    public BaleiaCatalogStoreConfig setSecretFileBaseDir(String secretFileBaseDir)
+    {
+        this.secretFileBaseDir = secretFileBaseDir;
         return this;
     }
 

@@ -379,3 +379,53 @@ installation. See "Installing in an existing Trino" section.
   `@baleia-secret[...]` after resolution, eliminating the circular-reference
   and bad-regex escape hatches.
 
+### Secret resolution schemes
+
+`SecretResolver` supports three origin schemes in `@baleia-secret[<origin>:<key>]`:
+
+| Scheme | Syntax | Resolution | Rotation |
+|---|---|---|---|
+| `catalog:` | `@baleia-secret[<catalog>:<key>]` | Another row in `trino_catalog_registry` | Via `CREATE CATALOG` DDL |
+| `file:` | `@baleia-secret[file:<name>]` | File under `baleia.secret-file-base-dir` | kubelet updates Secret mount; next catalog reload picks up |
+| `env:` | `@baleia-secret[env:<VAR>]` | Process environment variable | Requires Trino restart |
+
+**`file:` (recommended for Kubernetes):**
+The LakeDeepDiver writes only the reference `@baleia-secret[file:db-password.txt]`
+to the database. The actual credential lives in a Kubernetes Secret mounted as a
+file. The Postgres database never contains the credential in cleartext.
+
+```yaml
+# Kubernetes Pod spec
+volumes:
+  - name: db-secrets
+    secret:
+      secretName: trino-db-secrets
+containers:
+  - name: trino
+    volumeMounts:
+      - name: db-secrets
+        mountPath: /etc/trino/secrets
+        readOnly: true
+```
+
+```properties
+# catalog-store.properties
+baleia.secret-file-base-dir=/etc/trino/secrets
+```
+
+Restrictions on `file:`:
+* `baleia.secret-file-base-dir` must be non-empty (empty disables the scheme).
+* File names may only contain `[A-Za-z0-9._-]` — no `/`, no `..`, no absolute path.
+* Symlinks that resolve outside the base directory are rejected.
+* Maximum file size: 64 KiB.
+* Files are re-read on every `resolve()` call — no Trino restart needed for rotation.
+
+**`env:` (for non-Kubernetes deployments):**
+Reads an environment variable from the Trino process. The variable must be set
+before the JVM starts; rotating the value requires restarting the coordinator.
+This is documented as a limitation — use `file:` in Kubernetes when possible.
+
+**Reserved names:** `env` and `file` are reserved as catalog names (they cannot
+be used as `catalog_name` in `trino_catalog_registry`) to avoid ambiguity with
+the scheme syntax.
+

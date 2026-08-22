@@ -41,6 +41,7 @@ class BaleiaCatalogStoreConfigTest
         assertEquals(5, cfg.getMaxConnectAttempts());
         assertEquals(2000, cfg.getInitialBackoff().toMillis());
         assertEquals(30000, cfg.getMaxBackoff().toMillis());
+        assertEquals("", cfg.getSecretFileBaseDir());
     }
 
     @Test

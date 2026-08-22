@@ -4,7 +4,7 @@
 --   * trino_clusters.id  UUID (matches the production migration schema)
 --   * trino_catalog_registry + CHECK on name format, reserved names,
 --     sync_status, updated_by
--- The backend Go repository owns the canonical migration; this file only
+-- The backend (Go, Rails/LakeDeepDiver, or other) owns the canonical migration; this file only
 -- reproduces the columns the plugin touches at boot/DDl, with the same
 -- CHECKs so manual inserts surface the same errors here as in production.
 --
@@ -61,7 +61,7 @@ ALTER TABLE trino_catalog_registry
 ALTER TABLE trino_catalog_registry
     ADD CONSTRAINT trino_catalog_registry_name_format
     CHECK (catalog_name ~ '^[a-z][a-z0-9_]{0,62}$'
-       AND catalog_name NOT IN ('system', 'jmx', 'tpch', 'tpcds', 'memory')
+       AND catalog_name NOT IN ('system', 'jmx', 'tpch', 'tpcds', 'memory', 'env', 'file')
        AND connector_name ~ '^[a-z][a-z0-9_]{0,62}$');
 
 ALTER TABLE trino_catalog_registry
