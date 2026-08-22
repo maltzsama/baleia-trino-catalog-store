@@ -1,3 +1,15 @@
+# [0.3.0](https://github.com/maltzsama/baleia-trino-catalog-store/compare/v0.2.1...v0.3.0) (2026-08-22)
+
+
+### Bug Fixes
+
+* added dump.sh to ignore ([c467475](https://github.com/maltzsama/baleia-trino-catalog-store/commit/c46747542e69bec260e4482eef85a27271841e38))
+
+
+### Features
+
+* add file: and env: secret resolution schemes ([55954bc](https://github.com/maltzsama/baleia-trino-catalog-store/commit/55954bcb6e025e6f29977f51b16142d44ea12141))
+
 ## [0.2.1](https://github.com/maltzsama/baleia-trino-catalog-store/compare/v0.2.0...v0.2.1) (2026-08-10)
 
 
