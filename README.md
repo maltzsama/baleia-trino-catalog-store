@@ -21,9 +21,73 @@ The actual SPI 482 signatures are documented in
 | `CREATE CATALOG` | `createCatalogProperties()` then `addOrReplaceCatalog()` | Resolves `@baleia-secret[...]` (fails the DDL on unresolved/circular reference), `UPSERT`s the row carrying the computed `catalog_version` |
 | `DROP CATALOG` | `removeCatalog()` | `UPDATE ... SET enabled = false` (soft delete) |
 
-The plugin does **not** poll — runtime propagation is the Go backend's responsibility
+The plugin does **not** poll — runtime propagation is the backend's responsibility
 via `CREATE CATALOG`. It does **not** build connector properties — all knowledge about
-Polaris, Iceberg, REST catalog lives in Go; this plugin only transports.
+Polaris, Iceberg, REST catalog lives in the backend; this plugin only transports.
+
+## Backend requirements
+
+The plugin is a **reader**. It queries PostgreSQL for catalogs and resolves secrets.
+The database schema belongs to whichever backend manages the catalog lifecycle
+(LakeDeepDiver, Cosmonaut, Baleia, or any other). Each backend owns its own
+migration — the plugin does not govern schema, run DDL, or claim ownership of
+any database object.
+
+### Table names (fixed)
+
+| Table | Purpose |
+|---|---|
+| `trino_clusters` | Coordinator cluster registry |
+| `trino_catalog_registry` | Catalog projection for Trino boot |
+
+Backend new? Create these two tables with these exact names. The plugin joins
+them and reads a fixed set of columns — nothing more.
+
+### Boot query
+
+The query the plugin executes on every coordinator start:
+
+```sql
+SELECT r.catalog_name, r.connector_name, r.properties::text
+  FROM trino_catalog_registry r
+  JOIN trino_clusters c ON c.id = r.cluster_id
+ WHERE c.name = ? AND r.enabled
+ ORDER BY r.catalog_name
+```
+
+`?` is the value of `baleia.cluster-name` (default `"default"`).
+
+### Columns the plugin reads
+
+| Table | Column | Type accepted | Required | Notes |
+|---|---|---|---|---|
+| `trino_clusters` | `name` | `text` | yes | Used in the `WHERE` clause of the boot query |
+| `trino_catalog_registry` | `cluster_id` | `uuid` | yes | FK to `trino_clusters.id`; used in the `JOIN` |
+| `trino_catalog_registry` | `catalog_name` | `text` | yes | Catalog name in Trino; must match `^[a-z][a-z0-9_]{0,62}$` |
+| `trino_catalog_registry` | `connector_name` | `text` | yes | Trino connector name; same format as `catalog_name` |
+| `trino_catalog_registry` | `properties` | `json` or `jsonb` | yes | Read via `::text`; must be a flat `{"key":"value"}` object |
+| `trino_catalog_registry` | `enabled` | `boolean` | yes | Only `true` rows are loaded at boot |
+| `trino_catalog_registry` | `sync_status` | `text` | — | **Written** by the plugin on error (`'error'`) |
+| `trino_catalog_registry` | `sync_error` | `text` | — | **Written** by the plugin on error (truncated to 1000 chars) |
+| `trino_catalog_registry` | `catalog_version` | `text` | — | **Written** on `CREATE CATALOG`; nullable, not read at boot |
+| `trino_catalog_registry` | `updated_by` | `text` | — | **Written**; identifies the role that wrote the row |
+
+**Additional columns are free.** The plugin ignores any column it does not
+explicitly select. Add indexes, audit columns, or whatever your backend needs —
+the plugin will not see them.
+
+### `updated_by` values
+
+The `CHECK` constraint accepts `IN ('baleia', 'trino')`. These identify the
+**role** that wrote the row, not a specific product:
+
+| Value | Meaning |
+|---|---|
+| `'baleia'` | The control plane wrote or updated the row |
+| `'trino'` | The coordinator wrote back (UPSERT on DDL, soft delete, error mark) |
+
+If a backend needs to distinguish *which* control plane wrote the row, that is
+a new nullable column — the plugin ignores what it does not know.
 
 ### N5 — provenance of `@baleia-secret[...]` (verified)
 
@@ -390,7 +454,7 @@ installation. See "Installing in an existing Trino" section.
 | `env:` | `@baleia-secret[env:<VAR>]` | Process environment variable | Requires Trino restart |
 
 **`file:` (recommended for Kubernetes):**
-The LakeDeepDiver writes only the reference `@baleia-secret[file:db-password.txt]`
+The backend writes only the reference `@baleia-secret[file:db-password.txt]`
 to the database. The actual credential lives in a Kubernetes Secret mounted as a
 file. The Postgres database never contains the credential in cleartext.
 

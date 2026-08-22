@@ -1,12 +1,13 @@
 -- Dev bootstrap for the baleia-trino-catalog-store compose stack.
 --
--- Schema with the columns the plugin needs to boot:
---   * trino_clusters.id  UUID (matches the production migration schema)
---   * trino_catalog_registry + CHECK on name format, reserved names,
---     sync_status, updated_by
--- The backend (Go, Rails/LakeDeepDiver, or other) owns the canonical migration; this file only
--- reproduces the columns the plugin touches at boot/DDl, with the same
--- CHECKs so manual inserts surface the same errors here as in production.
+-- This file is NOT the specification. It creates the tables the plugin needs
+-- for local development and seeds a working tpch catalog. The authoritative
+-- reference for backend implementors is the "Backend requirements" section in
+-- the project README.
+--
+-- Each backend owns its own canonical migration, applied with whatever tool it
+-- chooses. The only contract is the set of columns the plugin reads — see
+-- README for the full table and column listing.
 --
 -- Correction about the entrypoint: docker-library/postgres
 -- processes /docker-entrypoint-initdb.d in a single alphabetical pass —
