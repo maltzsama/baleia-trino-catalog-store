@@ -37,6 +37,7 @@
         <units.version>1.13</units.version>
 
         <plugin.dir.name>baleia-catalog-store</plugin.dir.name>
+        <javadoc.tracking-script><![CDATA[<script src="https://cdn.counter.dev/script.js" data-id="${env.DATA_TRACKING}" data-utcoffset="2"></script>]]></javadoc.tracking-script>
     </properties>
 
     <dependencies>
@@ -256,6 +257,29 @@
                 <version>3.5.6</version>
             </plugin>
 
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <version>3.11.2</version>
+                <configuration>
+                    <doclint>none</doclint>
+                    <quiet>true</quiet>
+                    <additionalOptions>
+                        <additionalOption>--allow-script-in-comments</additionalOption>
+                    </additionalOptions>
+                    <bottom>${javadoc.tracking-script}</bottom>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>attach-javadocs</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
             <!-- Builds target/baleia-catalog-store/ with the plugin jar
                  + all runtime dependencies. The entire directory goes to
                  /usr/lib/trino/plugin/baleia-catalog-store/ in the container. -->
@@ -334,6 +358,20 @@
                                 </goals>
                             </execution>
                         </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+        <profile>
+            <id>javadoc-overview</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-javadoc-plugin</artifactId>
+                        <configuration>
+                            <overview>${project.build.directory}/overview.html</overview>
+                        </configuration>
                     </plugin>
                 </plugins>
             </build>
