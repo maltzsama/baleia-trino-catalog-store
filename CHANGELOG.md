@@ -1,3 +1,12 @@
+## [0.4.1](https://github.com/maltzsama/baleia-trino-catalog-store/compare/v0.4.0...v0.4.1) (2026-08-22)
+
+
+### Bug Fixes
+
+* add git config to gh-pages deploy step ([1ef6a98](https://github.com/maltzsama/baleia-trino-catalog-store/commit/1ef6a989582bf86cb090c038a089cf44ad81a437)), closes [#pages](https://github.com/maltzsama/baleia-trino-catalog-store/issues/pages)
+* start Docker stack before acceptance tests in CI ([dd18972](https://github.com/maltzsama/baleia-trino-catalog-store/commit/dd1897225e4562f5a2f28b34c0d0818c23a42637))
+* wait for Trino to be ready before first acceptance test ([8dddbbc](https://github.com/maltzsama/baleia-trino-catalog-store/commit/8dddbbcae38fa432846855e5bf8e6e719deb3a9d))
+
 # [0.4.0](https://github.com/maltzsama/baleia-trino-catalog-store/compare/v0.3.0...v0.4.0) (2026-08-22)
 
 
