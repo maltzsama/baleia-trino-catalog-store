@@ -42,6 +42,10 @@ services:
       - ./trino/catalog-store.properties:/etc/trino/catalog-store.properties:ro
       # The entire plugin directory: jar + dependencies (mounted from target/).
       - ../target/baleia-catalog-store:/usr/lib/trino/plugin/baleia-catalog-store:ro
+      # Secret files for @baleia-secret[file:...] resolution.
+      # In production, mount a Kubernetes Secret here. For dev, the directory
+      # contains sample files the seed catalog can reference.
+      - ./secrets:/etc/trino/secrets:ro
       # Important: etc/catalog is NOT mounted — must remain empty in the final image.
       #
       # jvm.config and node.properties are intentionally NOT

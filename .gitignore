@@ -531,3 +531,6 @@ dump*.md
 tmp/dump.sh
 dump.md
 tmp/dump.sh
+
+dump.sh
+dump.md

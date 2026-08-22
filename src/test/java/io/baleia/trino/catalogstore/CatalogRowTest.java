@@ -51,6 +51,18 @@ class CatalogRowTest
     }
 
     @Test
+    void rejectsReservedSchemeNames()
+    {
+        IllegalArgumentException e1 = assertThrows(IllegalArgumentException.class,
+                () -> new CatalogRow("env", "tpch", Map.of()));
+        assertTrue(e1.getMessage().contains("reserved"));
+
+        IllegalArgumentException e2 = assertThrows(IllegalArgumentException.class,
+                () -> new CatalogRow("file", "tpch", Map.of()));
+        assertTrue(e2.getMessage().contains("reserved"));
+    }
+
+    @Test
     void rejectsInvalidConnectorName()
     {
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,

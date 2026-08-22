@@ -27,7 +27,7 @@ class BaleiaCatalogStoreTest
         db.rows.add(new CatalogRow("vendas", "iceberg", Map.of(
                 "iceberg.auth.token", "@baleia-secret[vault:iceberg.auth.token]")));
         db.secretCatalog = Map.of("iceberg.auth.token", "secret-value");
-        SecretResolver resolver = new SecretResolver(db);
+        SecretResolver resolver = new SecretResolver(db, baseConfig());
         BaleiaCatalogStore store = new BaleiaCatalogStore(db, resolver);
 
         List<CatalogStore.StoredCatalog> catalogs = new ArrayList<>(store.getCatalogs());
@@ -48,7 +48,7 @@ class BaleiaCatalogStoreTest
         // Valid row that fails eager secret resolution (dangling reference) -> skipped + marked.
         db.rows.add(new CatalogRow("quebrada", "tpch", Map.of(
                 "k", "@baleia-secret[missing:segredo]")));
-        SecretResolver resolver = new SecretResolver(db);
+        SecretResolver resolver = new SecretResolver(db, baseConfig());
         BaleiaCatalogStore store = new BaleiaCatalogStore(db, resolver);
 
         List<CatalogStore.StoredCatalog> catalogs = new ArrayList<>(store.getCatalogs());
@@ -63,7 +63,7 @@ class BaleiaCatalogStoreTest
     {
         RecordingDatabase db = new RecordingDatabase();
         db.rows.add(new CatalogRow("boa", "tpch", Map.of()));
-        SecretResolver resolver = new SecretResolver(db);
+        SecretResolver resolver = new SecretResolver(db, baseConfig());
         BaleiaCatalogStore store = new BaleiaCatalogStore(db, resolver);
 
         store.getCatalogs();
@@ -76,7 +76,7 @@ class BaleiaCatalogStoreTest
     {
         RecordingDatabase db = new RecordingDatabase();
         db.secretCatalog = Map.of("iceberg.auth.token", "resolvido");
-        SecretResolver resolver = new SecretResolver(db);
+        SecretResolver resolver = new SecretResolver(db, baseConfig());
         BaleiaCatalogStore store = new BaleiaCatalogStore(db, resolver);
 
         CatalogProperties props = store.createCatalogProperties(
@@ -93,7 +93,7 @@ class BaleiaCatalogStoreTest
     void addOrReplaceCatalogPersistsRow()
     {
         RecordingDatabase db = new RecordingDatabase();
-        SecretResolver resolver = new SecretResolver(db);
+        SecretResolver resolver = new SecretResolver(db, baseConfig());
         BaleiaCatalogStore store = new BaleiaCatalogStore(db, resolver);
 
         CatalogName name = new CatalogName("novo");
@@ -113,7 +113,7 @@ class BaleiaCatalogStoreTest
     void removeCatalogSoftDeletes()
     {
         RecordingDatabase db = new RecordingDatabase();
-        SecretResolver resolver = new SecretResolver(db);
+        SecretResolver resolver = new SecretResolver(db, baseConfig());
         BaleiaCatalogStore store = new BaleiaCatalogStore(db, resolver);
 
         store.removeCatalog(new CatalogName("velho"));
@@ -178,4 +178,12 @@ class BaleiaCatalogStoreTest
     private record Upsert(CatalogRow row, String version) {}
 
     private record Mark(String catalogName, String message) {}
+
+    private static BaleiaCatalogStoreConfig baseConfig()
+    {
+        return new BaleiaCatalogStoreConfig()
+                .setJdbcUrl("jdbc:postgresql://localhost:5432/_unused")
+                .setUsername("u")
+                .setPassword("p");
+    }
 }
