@@ -86,7 +86,12 @@ jobs:
     needs: [build, acceptance]
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
 
     steps:
     - uses: actions/checkout@v7
@@ -109,13 +114,11 @@ jobs:
         DATA_TRACKING: ${{ secrets.DATA_TRACKING }}
       run: ./mvnw -B process-resources javadoc:javadoc -Pjavadoc-overview -Dtrino.version=482
 
-    - name: Deploy to gh-pages
-      run: |
-        cd target/reports/apidocs
-        git init
-        git config user.name "github-actions[bot]"
-        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-        git checkout -b gh-pages
-        git add .
-        git commit -m "docs: update Javadoc"
-        git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" gh-pages
+    - name: Upload Pages artifact
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: target/reports/apidocs
+
+    - name: Deploy to GitHub Pages
+      id: deploy
+      uses: actions/deploy-pages@v4
