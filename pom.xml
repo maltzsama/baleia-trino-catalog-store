@@ -147,7 +147,7 @@
             </resource>
         </resources>
         <plugins>
-            <!-- Pinned so `mvn versions:set` (used by semantic-release) resolves
+            <!-- Pinned so `mvn versions:set` (used by Release Please) resolves
                  deterministically without a network metadata lookup. No
                  executions: this plugin only runs when invoked directly. -->
             <plugin>
