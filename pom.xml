@@ -29,7 +29,7 @@
         <!-- jackson-annotations diverged from jackson-core/databind at 2.20:
              annotations uses unpatched versions (2.22), databind/core use
              patched ones (2.22.1). They must not share a property. -->
-        <jackson.version>2.22.1</jackson.version>
+        <jackson.version>2.22.2</jackson.version>
         <jackson.annotations.version>2.22</jackson.annotations.version>
         <postgresql.version>42.7.13</postgresql.version>
         <junit.version>6.1.3</junit.version>
