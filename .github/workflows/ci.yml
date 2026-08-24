@@ -115,7 +115,7 @@ jobs:
       run: ./mvnw -B process-resources javadoc:javadoc -Pjavadoc-overview -Dtrino.version=482
 
     - name: Upload Pages artifact
-      uses: actions/upload-pages-artifact@v3
+      uses: actions/upload-pages-artifact@v5
       with:
         path: target/reports/apidocs
 
