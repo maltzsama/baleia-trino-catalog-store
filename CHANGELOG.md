@@ -31,6 +31,13 @@
 
 * add file: and env: secret resolution schemes ([55954bc](https://github.com/maltzsama/baleia-trino-catalog-store/commit/55954bcb6e025e6f29977f51b16142d44ea12141))
 
+## [0.5.2](https://github.com/maltzsama/baleia-trino-catalog-store/compare/v0.5.1...v0.5.2) (2026-08-31)
+
+
+### Bug Fixes
+
+* **ci:** add distributionManagement so deploy actually uploads ([#39](https://github.com/maltzsama/baleia-trino-catalog-store/issues/39)) ([fce8212](https://github.com/maltzsama/baleia-trino-catalog-store/commit/fce8212df7ab6e4118b4dc4415a36ec65b0c4a60))
+
 ## [0.5.1](https://github.com/maltzsama/baleia-trino-catalog-store/compare/v0.5.0...v0.5.1) (2026-08-31)
 
 
