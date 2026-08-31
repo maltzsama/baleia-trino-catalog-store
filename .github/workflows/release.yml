@@ -58,3 +58,20 @@ jobs:
       env:
         MAVEN_USERNAME: ${{ github.actor }}
         MAVEN_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Log in to GHCR
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Build and push the Trino + plugin image
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        file: docker/Dockerfile
+        push: true
+        tags: |
+          ghcr.io/maltzsama/baleia-trino:${{ github.event_name == 'workflow_dispatch' && inputs.tag || needs.release-please.outputs.tag_name }}
+          ghcr.io/maltzsama/baleia-trino:latest
