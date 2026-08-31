@@ -27,9 +27,16 @@ FROM trinodb/trino:${TRINO_VERSION}
 RUN rm -rf /etc/trino/catalog/* 2>/dev/null || true
 
 COPY --from=build /build/target/baleia-catalog-store /usr/lib/trino/plugin/baleia-catalog-store
-COPY docker/production/config.properties /etc/trino/config.properties
 COPY docker/production/catalog-store.properties /etc/trino/catalog-store.properties
+COPY --chmod=755 docker/production/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
 # jvm.config and node.properties are NOT overridden — see the comment in
 # docker/docker-compose.yml explaining why (the base image's versions carry
 # JDK 25 runtime flags a hand-written file would silently drop).
+
+# config.properties is NOT copied in — the entrypoint below writes it at
+# boot, since catalog.management/catalog.store are coordinator-only
+# properties and must be omitted entirely on a pure worker (confirmed:
+# Trino rejects catalog.store outright when coordinator=false, it isn't
+# something Airlift's ${ENV:...} substitution can conditionally blank out).
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
