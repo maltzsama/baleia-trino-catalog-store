@@ -5,10 +5,14 @@
 # - TRINO_IS_COORDINATOR: whether THIS container is the coordinator process
 #   at all (Trino's own `coordinator` property). Always "true" for the
 #   coordinator Deployment, always "false" for the worker Deployment. Only
-#   a coordinator loads the catalog.management/catalog.store properties —
-#   confirmed empirically that a pure worker (coordinator=false) rejects
-#   catalog.store outright at boot ("Configuration property 'catalog.store'
-#   was not used").
+#   `catalog.store` is coordinator-only — confirmed empirically that a pure
+#   worker (coordinator=false) rejects it outright at boot ("Configuration
+#   property 'catalog.store' was not used"). `catalog.management=dynamic`
+#   is NOT coordinator-only despite looking like it should be: every node
+#   needs it so it can accept catalogs the coordinator pushes at task
+#   dispatch time. A worker booted without it defaults to the static
+#   catalog manager and rejects that push with "Missing catalogs: [...]" —
+#   also reproduced against a real cluster.
 # - TRINO_INCLUDE_COORDINATOR: Trino's own `node-scheduler.include-coordinator`
 #   — whether the coordinator ALSO executes query tasks itself (single-node
 #   topology) vs. delegating all tasks to separate workers (cluster
@@ -34,9 +38,19 @@ CONFIG_FILE=/etc/trino/config.properties
   echo "coordinator=${IS_COORDINATOR}"
   if [ "$IS_COORDINATOR" = "true" ]; then
     echo "node-scheduler.include-coordinator=${INCLUDE_COORDINATOR}"
-    echo "catalog.management=dynamic"
     echo "catalog.store=baleia"
   fi
+  # catalog.management=dynamic is NOT coordinator-only: in dynamic mode the
+  # coordinator pushes resolved catalog definitions to every node at task
+  # dispatch time, and a node booted with the default static manager rejects
+  # that push outright (StaticCatalogManager#ensureCatalogsLoaded throws
+  # "Missing catalogs: [...]"). Confirmed against a real cluster: the
+  # coordinator loaded catalog 'ibe' successfully, but every worker task
+  # against it failed with exactly that exception until this line stopped
+  # being conditional on IS_COORDINATOR. Only catalog.store is genuinely
+  # coordinator-only (a pure worker rejects it at boot: "Configuration
+  # property 'catalog.store' was not used").
+  echo "catalog.management=dynamic"
   echo "http-server.http.port=8080"
   echo "discovery.uri=${TRINO_DISCOVERY_URI}"
 } > "$CONFIG_FILE"
