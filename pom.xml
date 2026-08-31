@@ -4,7 +4,7 @@
 
     <groupId>io.baleia</groupId>
     <artifactId>baleia-trino-catalog-store</artifactId>
-    <version>0.5.4</version>
+    <version>0.6.0</version>
     <packaging>jar</packaging>
 
     <name>Baleia Trino Catalog Store</name>
