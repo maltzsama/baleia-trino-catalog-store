@@ -31,6 +31,13 @@
 
 * add file: and env: secret resolution schemes ([55954bc](https://github.com/maltzsama/baleia-trino-catalog-store/commit/55954bcb6e025e6f29977f51b16142d44ea12141))
 
+## [0.6.1](https://github.com/maltzsama/baleia-trino-catalog-store/compare/v0.6.0...v0.6.1) (2026-08-31)
+
+
+### Bug Fixes
+
+* catalog.management=dynamic is not coordinator-only, unlike catalog.store ([aac52e2](https://github.com/maltzsama/baleia-trino-catalog-store/commit/aac52e25e291e06fbcfe7b464593cd62ac3ce5a7))
+
 ## [0.6.0](https://github.com/maltzsama/baleia-trino-catalog-store/compare/v0.5.4...v0.6.0) (2026-08-31)
 
 
