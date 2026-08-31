@@ -31,6 +31,13 @@
 
 * add file: and env: secret resolution schemes ([55954bc](https://github.com/maltzsama/baleia-trino-catalog-store/commit/55954bcb6e025e6f29977f51b16142d44ea12141))
 
+## [0.5.1](https://github.com/maltzsama/baleia-trino-catalog-store/compare/v0.5.0...v0.5.1) (2026-08-31)
+
+
+### Bug Fixes
+
+* remove package-name from release-please config to use standard v&lt;version&gt; tags ([c73bf6d](https://github.com/maltzsama/baleia-trino-catalog-store/commit/c73bf6db343a978f57200c8f98cb3340be9c5190))
+
 ## [0.5.0](https://github.com/maltzsama/baleia-trino-catalog-store/compare/baleia-trino-catalog-store-v0.4.1...baleia-trino-catalog-store-v0.5.0) (2026-08-24)
 
 
