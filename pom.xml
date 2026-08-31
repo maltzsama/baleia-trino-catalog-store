@@ -20,7 +20,7 @@
 
         <!-- PHASE 0 (tag 482): same versions as Trino's pom.xml -->
         <trino.version>482</trino.version>
-        <airlift.version>444</airlift.version>
+        <airlift.version>445</airlift.version>
 
         <guice.version>7.0.0</guice.version>
         <guava.version>33.6.0-jre</guava.version>
