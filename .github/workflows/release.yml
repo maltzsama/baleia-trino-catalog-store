@@ -8,6 +8,13 @@ on:
       tag:
         description: 'Tag to deploy (e.g. v0.5.0)'
         required: true
+      create_release:
+        description: 'Create the release (and the tag) first if it does not exist, at `ref`; then publish and build the tarballs'
+        type: boolean
+        default: false
+      ref:
+        description: 'Commit or branch the new tag points at (only used with create_release)'
+        default: 'main'
       tarballs_only:
         description: 'Only (re)build and upload the plugin tarballs to the existing release; do not republish the Maven package or the image'
         type: boolean
@@ -30,10 +37,32 @@ jobs:
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
 
+  # Manual path: creates the release (and its tag) at `ref` when it does not exist,
+  # so a release never depends on release-please succeeding at creating it. The
+  # publish and tarballs jobs below then run for that tag.
+  create-release:
+    if: github.event_name == 'workflow_dispatch' && inputs.create_release && !inputs.tarballs_only
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+    - name: Create the release if it does not exist
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        TAG: ${{ inputs.tag }}
+        TARGET: ${{ inputs.ref }}
+      run: |
+        set -euo pipefail
+        if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+          echo "Release $TAG already exists; nothing to create."
+          exit 0
+        fi
+        gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$TARGET" --title "$TAG" --generate-notes
+
   publish:
-    needs: [release-please]
+    needs: [release-please, create-release]
     if: |
-      always() && (
+      always() && needs.create-release.result != 'failure' && (
         (github.event_name == 'push' && needs.release-please.outputs.release_created == 'true') ||
         (github.event_name == 'workflow_dispatch' && !inputs.tarballs_only)
       )
@@ -87,9 +116,9 @@ jobs:
   # release and can be re-run for an existing tag with workflow_dispatch
   # (tarballs_only) without republishing the Maven package or the image.
   tarballs:
-    needs: [release-please]
+    needs: [release-please, create-release]
     if: |
-      always() && (
+      always() && needs.create-release.result != 'failure' && (
         (github.event_name == 'push' && needs.release-please.outputs.release_created == 'true') ||
         github.event_name == 'workflow_dispatch'
       )
