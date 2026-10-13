@@ -18,9 +18,9 @@
         <maven.compiler.target>25</maven.compiler.target>
         <java.release>25</java.release>
 
-        <!-- PHASE 0 (tag 482): same versions as Trino's pom.xml -->
+        <!-- PHASE 0 (tag 483): same versions as Trino's pom.xml -->
         <trino.version>483</trino.version>
-        <airlift.version>445</airlift.version>
+        <airlift.version>450</airlift.version>
 
         <guice.version>7.0.0</guice.version>
         <guava.version>33.7.1-jre</guava.version>
