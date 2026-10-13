@@ -1,7 +1,9 @@
 package io.baleia.trino.catalogstore;
 
+import io.baleia.trino.catalogstore.guard.BaleiaCatalogGuardFactory;
 import io.trino.spi.Plugin;
 import io.trino.spi.catalog.CatalogStoreFactory;
+import io.trino.spi.security.SystemAccessControlFactory;
 
 import java.util.List;
 
@@ -21,5 +23,11 @@ public class BaleiaCatalogStorePlugin
     public Iterable<CatalogStoreFactory> getCatalogStoreFactories()
     {
         return List.of(new BaleiaCatalogStoreFactory());
+    }
+
+    @Override
+    public Iterable<SystemAccessControlFactory> getSystemAccessControlFactories()
+    {
+        return List.of(new BaleiaCatalogGuardFactory());
     }
 }

@@ -199,6 +199,33 @@ else
     pass "T9 reserved name rejected at DB level"
 fi
 
+# ── T10/T11 — catalog guard (opt-in: BALEIA_GUARD_TEST=1) ───────────────────────
+# The guard is stacked by the operator (see baleia-catalog-guard.properties);
+# running it changes the default trino user's ability to manage catalogs, so
+# these checks only run when the stack has been wired for the guard.
+if [[ "${BALEIA_GUARD_TEST:-0}" == "1" ]]; then
+    # T10: the bypass matrix must all fail for the non-admin trino user.
+    matrix_ok=1
+    for q in \
+        "CREATE CATALOG guard_x USING tpch" \
+        "EXECUTE IMMEDIATE 'CREATE CATALOG guard_x USING tpch'" \
+        "SET SESSION AUTHORIZATION 'baleia_admin'"; do
+        if "${TRINO[@]}" "$q" >/dev/null 2>&1; then
+            matrix_ok=0
+            fail "T10 bypass denied for non-admin" "succeeded: $q"
+        fi
+    done
+    [[ "$matrix_ok" == "1" ]] && pass "T10 bypass matrix denied for non-admin"
+
+    # T11: the same CREATE CATALOG as baleia_admin succeeds.
+    if "${TRINO[@]}" --user "$BALEIA_GUARD_ADMIN:-baleia_admin" "CREATE CATALOG guard_x USING tpch" >/dev/null 2>&1; then
+        pass "T11 admin CREATE CATALOG succeeds"
+    else
+        fail "T11 admin CREATE CATALOG succeeds" "expected success"
+    fi
+    "${TRINO[@]}" --user "${BALEIA_GUARD_ADMIN:-baleia_admin}" "DROP CATALOG guard_x" >/dev/null 2>&1 || true
+fi
+
 # ── Summary ──────────────────────────────────────────────────────────────────────
 echo
 echo "── Acceptance summary ──"
@@ -206,7 +233,11 @@ for r in "${RESULTS[@]}"; do echo "$r"; done
 fails=$(printf '%s\n' "${RESULTS[@]}" | grep -c '^FAIL' || true)
 echo
 if (( fails == 0 )); then
-    echo "All T1-T9 PASS." >&2
+    if [[ "${BALEIA_GUARD_TEST:-0}" == "1" ]]; then
+        echo "All T1-T11 PASS." >&2
+    else
+        echo "All T1-T9 PASS." >&2
+    fi
     exit 0
 else
     echo "$fails FAIL(s)." >&2
