@@ -31,6 +31,20 @@
 
 * add file: and env: secret resolution schemes ([55954bc](https://github.com/maltzsama/baleia-trino-catalog-store/commit/55954bcb6e025e6f29977f51b16142d44ea12141))
 
+## [0.7.0](https://github.com/maltzsama/baleia-trino-catalog-store/compare/v0.6.1...v0.7.0) (2026-10-13)
+
+
+### Features
+
+* **guard:** catalog management authorization, read-only mode, admin identities ([9f6cc7b](https://github.com/maltzsama/baleia-trino-catalog-store/commit/9f6cc7b96342e51ef399930da35248b22790c5e2))
+* **guard:** catalog management authorization, read-only mode, admin identities ([1f814cd](https://github.com/maltzsama/baleia-trino-catalog-store/commit/1f814cd4c48e5e28205c72310f699504431fe24b))
+
+
+### Bug Fixes
+
+* **guard:** allow what it does not decide, and let an unauthenticated admin connect ([ae7e80b](https://github.com/maltzsama/baleia-trino-catalog-store/commit/ae7e80bf5f722622af36ea0b507df443d77728c2))
+* **guard:** allow what it does not decide, and let an unauthenticated admin connect ([abc0984](https://github.com/maltzsama/baleia-trino-catalog-store/commit/abc09846c39887c8ce86353254bce969aed3c698))
+
 ## [0.6.1](https://github.com/maltzsama/baleia-trino-catalog-store/compare/v0.6.0...v0.6.1) (2026-08-31)
 
 
