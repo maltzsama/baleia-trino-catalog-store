@@ -7,6 +7,8 @@ import io.trino.spi.connector.CatalogSchemaRoutineName;
 import io.trino.spi.connector.CatalogSchemaTableName;
 import io.trino.spi.connector.EntityKindAndName;
 import io.trino.spi.connector.EntityPrivilege;
+import io.trino.spi.connector.SchemaTableName;
+import io.trino.spi.function.SchemaFunctionName;
 import io.trino.spi.security.AccessDeniedException;
 import io.trino.spi.security.Identity;
 import io.trino.spi.security.Privilege;
@@ -15,6 +17,7 @@ import io.trino.spi.security.SystemSecurityContext;
 import io.trino.spi.security.TrinoPrincipal;
 
 import java.security.Principal;
+import java.util.Collection;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -48,10 +51,23 @@ public class BaleiaCatalogGuard
             ImmutableSet.of("query_max_execution_time", "query_max_run_time");
 
     private final Set<String> adminUsers;
+    private final boolean allowUnauthenticatedAdmin;
 
     public BaleiaCatalogGuard(Set<String> adminUsers)
     {
+        this(adminUsers, false);
+    }
+
+    /**
+     * @param allowUnauthenticatedAdmin when true, a connection with no authenticated
+     *        principal (a coordinator without authentication, reachable only on a private
+     *        network) may claim an admin user. A connection that does have an authenticated
+     *        principal must still be an admin to land in an admin user.
+     */
+    public BaleiaCatalogGuard(Set<String> adminUsers, boolean allowUnauthenticatedAdmin)
+    {
         this.adminUsers = ImmutableSet.copyOf(adminUsers);
+        this.allowUnauthenticatedAdmin = allowUnauthenticatedAdmin;
     }
 
     // ── catalog management (admin-only) ────────────────────────────────────────
@@ -80,11 +96,19 @@ public class BaleiaCatalogGuard
     @Override
     public void checkCanSetUser(Optional<Principal> principal, String userName)
     {
-        if (adminUsers.contains(userName)) {
-            // Only an authenticated admin principal may land in an admin user.
-            if (principal.isEmpty() || !adminUsers.contains(principal.get().getName())) {
+        if (!adminUsers.contains(userName)) {
+            return;
+        }
+        if (principal.isPresent()) {
+            // An authenticated principal may land in an admin user only if it is one.
+            if (!adminUsers.contains(principal.get().getName())) {
                 throw new AccessDeniedException("only Baleia admin users may connect as an admin user");
             }
+            return;
+        }
+        // No authentication on this coordinator: identity is whatever the client sent.
+        if (!allowUnauthenticatedAdmin) {
+            throw new AccessDeniedException("only Baleia admin users may connect as an admin user");
         }
     }
 
@@ -473,6 +497,165 @@ public class BaleiaCatalogGuard
     }
 
     // ── helpers ────────────────────────────────────────────────────────────────
+
+    // ── checks the guard does not decide: always allowed ───────────────────────
+    //
+    // Trino denies, by default, every SystemAccessControl check an implementation
+    // does not override. The guard decides catalog management, impersonation and
+    // read-only sessions only; everything below is allowed here and left to the other
+    // access-control files in access-control.config-files. Without these overrides an
+    // active guard denies the whole cluster (even SELECT 1). BaleiaCatalogGuardTest
+    // fails if the SPI gains a check the guard does not override.
+
+    @Override
+    public void checkCanExecuteQuery(Identity identity, QueryId queryId)
+    {
+    }
+
+    @Override
+    public void checkCanViewQueryOwnedBy(Identity identity, Identity queryOwner)
+    {
+    }
+
+    @Override
+    public void checkCanKillQueryOwnedBy(Identity identity, Identity queryOwner)
+    {
+    }
+
+    @Override
+    public void checkCanReadSystemInformation(Identity identity)
+    {
+    }
+
+    @Override
+    public void checkCanShowSchemas(SystemSecurityContext context, String catalogName)
+    {
+    }
+
+    @Override
+    public void checkCanShowCreateSchema(SystemSecurityContext context, CatalogSchemaName schema)
+    {
+    }
+
+    @Override
+    public void checkCanShowCreateTable(SystemSecurityContext context, CatalogSchemaTableName table)
+    {
+    }
+
+    @Override
+    public void checkCanShowTables(SystemSecurityContext context, CatalogSchemaName schema)
+    {
+    }
+
+    @Override
+    public void checkCanShowColumns(SystemSecurityContext context, CatalogSchemaTableName table)
+    {
+    }
+
+    @Override
+    public void checkCanSelectFromColumns(SystemSecurityContext context, CatalogSchemaTableName table, Optional<String> column, Set<String> columns)
+    {
+    }
+
+    @Override
+    public void checkCanSelectFromColumns(SystemSecurityContext context, CatalogSchemaTableName table, Set<String> columns)
+    {
+    }
+
+    @Override
+    public void checkCanShowRoles(SystemSecurityContext context)
+    {
+    }
+
+    @Override
+    public void checkCanShowCurrentRoles(SystemSecurityContext context)
+    {
+    }
+
+    @Override
+    public void checkCanShowRoleGrants(SystemSecurityContext context)
+    {
+    }
+
+    @Override
+    public void checkCanShowFunctions(SystemSecurityContext context, CatalogSchemaName schema)
+    {
+    }
+
+    @Override
+    public void checkCanShowCreateFunction(SystemSecurityContext context, CatalogSchemaRoutineName routine)
+    {
+    }
+
+    @Override
+    public void checkCanShowBranches(SystemSecurityContext context, CatalogSchemaTableName table)
+    {
+    }
+
+    // Visibility and function checks. Their SPI defaults are restrictive too
+    // (canAccessCatalog and friends return false, the filter* methods return an empty
+    // set), which hides every catalog, schema and table from SHOW and the metadata
+    // tables. The guard does not hide anything.
+
+    @Override
+    public boolean canAccessCatalog(SystemSecurityContext context, String catalogName)
+    {
+        return true;
+    }
+
+    @Override
+    public boolean canExecuteFunction(SystemSecurityContext context, CatalogSchemaRoutineName functionName)
+    {
+        return true;
+    }
+
+    @Override
+    public boolean canCreateViewWithExecuteFunction(SystemSecurityContext context, CatalogSchemaRoutineName functionName)
+    {
+        return true;
+    }
+
+    @Override
+    public Set<String> filterCatalogs(SystemSecurityContext context, Set<String> catalogs)
+    {
+        return catalogs;
+    }
+
+    @Override
+    public Set<String> filterSchemas(SystemSecurityContext context, String catalogName, Set<String> schemaNames)
+    {
+        return schemaNames;
+    }
+
+    @Override
+    public Set<SchemaTableName> filterTables(SystemSecurityContext context, String catalogName, Set<SchemaTableName> tableNames)
+    {
+        return tableNames;
+    }
+
+    @Override
+    public Set<String> filterColumns(SystemSecurityContext context, CatalogSchemaTableName table, Set<String> columns)
+    {
+        return columns;
+    }
+
+    @Override
+    public Map<SchemaTableName, Set<String>> filterColumns(SystemSecurityContext context, String catalogName, Map<SchemaTableName, Set<String>> tableColumns)
+    {
+        return tableColumns;
+    }
+
+    @Override
+    public Set<SchemaFunctionName> filterFunctions(SystemSecurityContext context, String catalogName, Set<SchemaFunctionName> functionNames)
+    {
+        return functionNames;
+    }
+
+    @Override
+    public Collection<Identity> filterViewQueryOwnedBy(Identity identity, Collection<Identity> queryOwners)
+    {
+        return queryOwners;
+    }
 
     private void requireAdmin(SystemSecurityContext context, String operation)
     {
