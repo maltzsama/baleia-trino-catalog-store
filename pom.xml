@@ -31,7 +31,7 @@
         <jackson.annotations.version>2.22</jackson.annotations.version>
         <postgresql.version>42.7.13</postgresql.version>
         <junit.version>6.1.3</junit.version>
-        <slice.version>2.8</slice.version>
+        <slice.version>2.9</slice.version>
         <units.version>1.13</units.version>
 
         <plugin.dir.name>baleia-catalog-store</plugin.dir.name>
