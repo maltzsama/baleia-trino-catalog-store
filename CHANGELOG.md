@@ -31,6 +31,24 @@
 
 * add file: and env: secret resolution schemes ([55954bc](https://github.com/maltzsama/baleia-trino-catalog-store/commit/55954bcb6e025e6f29977f51b16142d44ea12141))
 
+## [0.8.0](https://github.com/maltzsama/baleia-trino-catalog-store/compare/v0.7.0...v0.8.0) (2026-10-14)
+
+
+### Features
+
+* drop Trino 482 support, target 483 only ([371bb31](https://github.com/maltzsama/baleia-trino-catalog-store/commit/371bb31b3bc775b69a93bb6ba44e286c6b906d94))
+* drop Trino 482 support, target 483 only ([0db06ee](https://github.com/maltzsama/baleia-trino-catalog-store/commit/0db06eec2bd3a7583cc441837d0ebc951146e606))
+
+
+### Bug Fixes
+
+* **secrets:** harden file: scheme and clear stale sync errors ([b9c7d9b](https://github.com/maltzsama/baleia-trino-catalog-store/commit/b9c7d9b5b97c4a7488a98654ea36794d554529ae))
+* **secrets:** harden file: scheme and clear stale sync errors ([3365067](https://github.com/maltzsama/baleia-trino-catalog-store/commit/33650671ddfa0e5056da2567d84ba85a72ad6f33))
+* **secrets:** keep the newer pending entry when rejecting a stale version ([afdfdb2](https://github.com/maltzsama/baleia-trino-catalog-store/commit/afdfdb25055ac7cb02b950b5e7e2a8c6ee919758))
+* **secrets:** persist [@baleia-secret](https://github.com/baleia-secret) placeholders, never the resolved values ([70b3c68](https://github.com/maltzsama/baleia-trino-catalog-store/commit/70b3c68fdbcd41485d12f4ff7a580d9a8361fd9b))
+* **secrets:** persist [@baleia-secret](https://github.com/baleia-secret) placeholders, never the resolved values ([7489db1](https://github.com/maltzsama/baleia-trino-catalog-store/commit/7489db149330fb1615f2e0cf7ae7abdd9dfff6ee))
+* **secrets:** rename clearErrors to markSynced to satisfy SpotBugs ([f1eab42](https://github.com/maltzsama/baleia-trino-catalog-store/commit/f1eab424f6b7251164186cdc897ab8b8f399095d))
+
 ## [0.7.0](https://github.com/maltzsama/baleia-trino-catalog-store/compare/v0.6.1...v0.7.0) (2026-10-13)
 
 
