@@ -483,9 +483,11 @@ file. The Postgres database never contains the credential in cleartext, whether
 the row was written by the backend or by `CREATE CATALOG` in Trino.
 
 Rows written by plugin 0.7.0 or earlier through `CREATE CATALOG` may still hold
-the resolved value in `properties`. Re-run `CREATE CATALOG` (or edit the row) with
-the `@baleia-secret[...]` reference to replace it, and rotate any credential that
-was stored that way.
+the resolved value in `properties`. If the catalog is active, `CREATE CATALOG`
+fails with `ALREADY_EXISTS` and `CREATE CATALOG IF NOT EXISTS` leaves it unchanged:
+`DROP CATALOG` it and create it again with the `@baleia-secret[...]` reference, or
+edit the row and restart the coordinator. Rotate any credential that was stored
+that way.
 
 ```yaml
 # Kubernetes Pod spec

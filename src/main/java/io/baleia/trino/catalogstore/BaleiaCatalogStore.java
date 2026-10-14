@@ -159,8 +159,9 @@ public class BaleiaCatalogStore
         String version = catalogProperties.version().toString();
 
         // Never fall back to catalogProperties.properties(): those are the resolved values.
-        PendingCatalog original = pending.remove(name);
-        if (original == null || !original.version().equals(version)) {
+        // Only consume the entry that matches: a stale version must not discard a newer one.
+        PendingCatalog original = pending.get(name);
+        if (original == null || !original.version().equals(version) || !pending.remove(name, original)) {
             throw new TrinoException(CATALOG_STORE_ERROR,
                     format("Refusing to persist catalog '%s': it was not created through createCatalogProperties, "
                             + "so the original @baleia-secret placeholders are unknown and the resolved values "

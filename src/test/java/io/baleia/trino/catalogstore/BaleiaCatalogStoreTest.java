@@ -175,6 +175,22 @@ class BaleiaCatalogStoreTest
     }
 
     @Test
+    void rejectingStaleVersionKeepsTheNewerPendingEntry()
+    {
+        RecordingDatabase db = new RecordingDatabase();
+        BaleiaCatalogStore store = new BaleiaCatalogStore(db, new SecretResolver(db, baseConfig()));
+        CatalogName name = new CatalogName("novo");
+        ConnectorName connector = new ConnectorName("tpch");
+        CatalogProperties stale = store.createCatalogProperties(name, connector, Map.of("a", "1"));
+        CatalogProperties current = store.createCatalogProperties(name, connector, Map.of("a", "2"));
+
+        assertThrows(TrinoException.class, () -> store.addOrReplaceCatalog(stale));
+        store.addOrReplaceCatalog(current);
+
+        assertEquals(Map.of("a", "2"), db.upserts.get(0).row.properties());
+    }
+
+    @Test
     void rotatedFileSecretTakesEffectOnNextBootWithoutRecreatingCatalog() throws IOException
     {
         Files.writeString(tempDir.resolve("db-password.txt"), "old");
