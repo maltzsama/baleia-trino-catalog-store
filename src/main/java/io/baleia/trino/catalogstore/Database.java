@@ -14,6 +14,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -94,6 +95,11 @@ public class Database {
             "SET sync_status = 'error', sync_error = ?, updated_by = 'trino', updated_at = now() " +
             "FROM trino_clusters c " +
             "WHERE c.id = r.cluster_id AND c.name = ? AND r.catalog_name = ?";
+
+    private static final String CLEAR_ERROR = "UPDATE trino_catalog_registry r " +
+            "SET sync_status = 'synced', sync_error = NULL, updated_by = 'trino', updated_at = now() " +
+            "FROM trino_clusters c " +
+            "WHERE c.id = r.cluster_id AND c.name = ? AND r.catalog_name = ? AND r.sync_status = 'error'";
 
     private final PGSimpleDataSource dataSource;
     private final String clusterName;
@@ -369,6 +375,27 @@ public class Database {
             markError(c, catalogName, message);
         } catch (SQLException e) {
             log.warn(e, "Failed to mark error on '%s'", catalogName);
+        }
+    }
+
+    /**
+     * Best-effort reset of {@code sync_status='error'} to {@code 'synced'} for catalogs
+     * that loaded fine on this boot. Rows in any other status are left untouched.
+     */
+    public void markSynced(Collection<String> catalogNames) {
+        if (catalogNames.isEmpty()) {
+            return;
+        }
+        try (Connection c = dataSource.getConnection();
+                PreparedStatement ps = c.prepareStatement(CLEAR_ERROR)) {
+            for (String name : catalogNames) {
+                ps.setString(1, clusterName);
+                ps.setString(2, name);
+                ps.addBatch();
+            }
+            ps.executeBatch();
+        } catch (SQLException e) {
+            log.warn(e, "Failed to clear sync errors for loaded catalogs");
         }
     }
 

@@ -77,6 +77,7 @@ public class BaleiaCatalogStore
     {
         List<CatalogRow> rows = database.loadAll();
         ImmutableList.Builder<StoredCatalog> out = ImmutableList.builder();
+        ImmutableList.Builder<String> loaded = ImmutableList.builder();
         for (CatalogRow row : rows) {
             try {
                 // D4: eager resolution inside the per-row try/catch.
@@ -87,6 +88,7 @@ public class BaleiaCatalogStore
                 ConnectorName connectorName = new ConnectorName(row.connectorName());
                 Map<String, String> resolved = secretResolver.resolve(row.properties());
                 out.add(new BaleiaStoredCatalog(row, connectorName, resolved));
+                loaded.add(row.catalogName());
             }
             catch (TrinoException e) {
                 // Total DB failure: fail boot.
@@ -97,6 +99,8 @@ public class BaleiaCatalogStore
                 database.markError(row.catalogName(), e.getMessage());
             }
         }
+        // A row that failed on an earlier boot and loads fine now must not stay 'error'.
+        database.markSynced(loaded.build());
         return out.build();
     }
 
