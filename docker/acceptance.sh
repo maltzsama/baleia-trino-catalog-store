@@ -168,12 +168,12 @@ else
     fail "T8a catalog created with resolved secret" "catalog 'seg' missing — CREATE CATALOG failed"
 fi
 
-# T8b — the registry stores the REAL resolved value, never the placeholder
-resolved_val=$("${PSQL[@]}" "SELECT properties->>'tpch.splits-per-node' FROM trino_catalog_registry WHERE catalog_name = 'seg';")
-if [[ "$resolved_val" == "4" ]]; then
-    pass "T8b registry stores the resolved value"
+# T8b — the registry stores the placeholder, never the resolved value
+stored_val=$("${PSQL[@]}" "SELECT properties->>'tpch.splits-per-node' FROM trino_catalog_registry WHERE catalog_name = 'seg';")
+if [[ "$stored_val" == "@baleia-secret[tpch_teste:tpch.splits-per-node]" ]]; then
+    pass "T8b registry stores the placeholder, not the resolved value"
 else
-    fail "T8b registry stores the resolved value" "expected '4', got '$resolved_val'"
+    fail "T8b registry stores the placeholder, not the resolved value" "expected the placeholder, got '$stored_val'"
 fi
 
 # T8c — placeholder preserved in query log, resolved value NOT leaked
@@ -186,6 +186,15 @@ if printf '%s' "$q" | grep -Fq '@baleia-secret[tpch_teste:tpch.splits-per-node]'
     fi
 else
     fail "T8c secret not leaked" "placeholder not present in query log"
+fi
+# T8d — the placeholder is resolved again at boot: seg survives a restart
+docker compose restart trino >/dev/null 2>&1
+if ! wait_for_trino; then
+    fail "T8d placeholder resolved again after restart" "Trino did not respond within 60s after restart"
+elif "${TRINO[@]}" "SHOW CATALOGS" 2>/dev/null | grep -qE '^[[:space:]]*seg[[:space:]]*$'; then
+    pass "T8d placeholder resolved again after restart"
+else
+    fail "T8d placeholder resolved again after restart" "seg missing after restart (row skipped at boot?)"
 fi
 # Best-effort cleanup: drop the seg catalog if it survived.
 "${TRINO[@]}" "DROP CATALOG IF EXISTS seg" >/dev/null 2>&1 || true

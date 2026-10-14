@@ -340,7 +340,8 @@ slipped through. Run it; do not skip it.
 | T6b  | `tpch_dois` does not return after restart | **PASS** |
 | T7   | Row with non-string JSON value is skipped; boot survives; `sync_status='error'` | **PASS** |
 | T8a  | `CREATE CATALOG` with placeholder resolves and catalog appears | **PASS** |
-| T8b  | Registry stores the placeholder, never the resolved value (unit-tested; the earlier run of this row stored the resolved value, see #72) | **PASS** |
+| T8b  | Registry stores the placeholder, never the resolved value (was inverted before #72) | **PASS** |
+| T8d  | The placeholder is resolved again at boot: the catalog survives a restart | **PASS** |
 | T8c  | Query log preserves the placeholder, never the resolved value | **PASS** |
 | T9   | `INSERT ... catalog_name='system'` rejected by DB `CHECK` | **PASS** |
 
