@@ -4,14 +4,14 @@ A Trino plugin that implements `CatalogStore` and makes the coordinator read cat
 directly from the `trino_catalog_registry` table in Baleia's PostgreSQL — eliminating
 static `.properties` files in `etc/catalog/`.
 
-* **Target Trino version:** 482 (pluggable SPI)
+* **Target Trino version:** 483 (pluggable SPI)
 * **Java:** 25+ (tested with `25.0.3-tem`; `air.java.version=25.0.1` is the minimum in Trino's POM)
 * **Airlift:** 444 (same as `dep.airlift.version` in Trino)
 * **Plugin registration:** ServiceLoader in
   `src/main/resources/META-INF/services/io.trino.spi.Plugin`
 
-The actual SPI 482 signatures are documented in
-[`docs/spi-482.md`](docs/spi-482.md) — consult/update it whenever changing Trino version.
+The actual SPI 483 signatures are documented in
+[`docs/spi-483.md`](docs/spi-483.md) — consult/update it whenever changing Trino version.
 
 ## What the plugin does
 
@@ -29,17 +29,15 @@ Polaris, Iceberg, REST catalog lives in the backend; this plugin only transports
 
 | Trino | Compiles | Acceptance | Notes |
 |-------|----------|------------|-------|
-| 482   | yes      | yes        | floor — version the artifact is built against |
-| 483   | yes      | yes        | same artifact |
+| 483   | yes      | yes        | the version the artifact is built against |
 
-The plugin compiles against the **lowest** supported version and runs on any
-version in the window. One artifact, one release. See
+Trino 482 is no longer supported (#79). Each release ships a single
+`baleia-catalog-store-<version>+trino483.tar.gz`. See
 [`docs/spi-compat.md`](docs/spi-compat.md) for the SPI surface, N5 verification,
 and upgrade procedure.
 
-**Policy:** support the current and previous Trino releases. When a new version
-ships, the floor moves up, the oldest drops out, and the line vanishes from this
-table in the same release.
+**Policy:** a version leaves this table in the same release that drops it from CI,
+the release tarballs and `docker/`.
 
 ## Backend requirements
 
@@ -251,7 +249,7 @@ every release.
 
 ## Docker Compose
 
-The `docker/` directory runs PostgreSQL 18 + Trino 482, mounting the plugin
+The `docker/` directory runs PostgreSQL 18 + Trino 483, mounting the plugin
 directly from `target/` and bootstrapping the schema + role + seed via
 `docker/initdb/` (Postgres entrypoint runs `*.sh` AND `*.sql` in a single
 alphabetical pass on the first initdb of the data directory, so `01-` is
@@ -347,7 +345,7 @@ slipped through. Run it; do not skip it.
 
 ## Upgrading the Trino version
 
-1. Run **Phase 0** (described in `docs/spi-482.md`): `git clone --depth 1
+1. Run **Phase 0** (described in `docs/spi-483.md`): `git clone --depth 1
    --branch <new-tag>` somewhere and verify `CatalogStore` and
    `CatalogStoreFactory` are still in `core/trino-spi/.../io/trino/spi/catalog/`
    and `Plugin.getCatalogStoreFactories()` still exists.
@@ -381,7 +379,7 @@ baleia-trino-catalog-store/
 ├── pom.xml
 ├── README.md
 ├── docs/
-│   └── spi-482.md                  # actual SPI signatures (Phase 0)
+│   └── spi-483.md                  # actual SPI signatures (Phase 0)
 ├── docker/
 │   ├── docker-compose.yml
 │   ├── acceptance.sh               # T1–T9 driver
@@ -430,7 +428,7 @@ directly, one connection per operation. Rationale:
 - A pool adds: idle sockets 24/7 against Postgres in a long-lived process; an
   extra jar in the plugin classpath (more `LinkageError` surface); and — the
   decisive factor — the SPI `CatalogStore` has no `close()` method or shutdown
-  hook in Trino 482. A pool created in `CatalogStoreFactory.create()` would
+  hook in Trino 483. A pool created in `CatalogStoreFactory.create()` would
   never be cleaned up.
 
 **Revisit trigger:** if Trino issue [#26760](https://github.com/trinodb/trino/issues/26760)
@@ -441,7 +439,7 @@ poll periodically. At that point a pool becomes appropriate.
 
 Rejection at the boundary, three layers deep: DB `CHECK` constraint,
 `CatalogRow` constructor, and Trino SPI's own `ConnectorName(String)`. No
-compatibility layer — see `docs/spi-482.md` §ConnectorName.
+compatibility layer — see `docs/spi-483.md` §ConnectorName.
 
 ### Don't repackage Trino
 

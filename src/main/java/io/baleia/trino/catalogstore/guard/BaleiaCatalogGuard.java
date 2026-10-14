@@ -37,7 +37,7 @@ import java.util.Set;
  *       AUTHORIZATION} would otherwise allow).</li>
  *   <li><b>Read-only mode.</b> A session whose identity carries the extra
  *       credential {@code baleia.mode=readonly} is denied every write/DDL check.
- *       See the SPI inventory in {@code docs/spi-482.md}.</li>
+ *       See the SPI inventory in {@code docs/spi-483.md}.</li>
  * </ol>
  */
 public class BaleiaCatalogGuard

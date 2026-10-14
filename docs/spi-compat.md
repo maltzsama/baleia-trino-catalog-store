@@ -1,19 +1,20 @@
 # SPI Compatibility
 
-This plugin compiles against the **lowest** supported Trino version and runs on
-any version in the support window. The artifact published is always the floor
-build.
+This plugin compiles against the supported Trino version and runs on it. Each
+release publishes one artifact per supported version (currently one).
 
 ## Supported versions
 
 | Trino | Compiles | Acceptance | Artifact | Status |
 |-------|----------|------------|----------|--------|
-| 482   | yes      | yes        | floor    | supported |
-| 483   | yes      | yes        | same     | supported |
+| 483   | yes      | yes        | `+trino483` | supported |
 
-**Policy:** support the current and previous Trino releases. When a new version
-ships (e.g. 484), the floor moves up (to 483), the oldest version drops out, and
-the line disappears from this table in the same release.
+Trino 482 is no longer supported (#79): the last release with a `+trino482`
+artifact is the one before that change. The SPI surface the plugin uses is
+identical in 482 and 483, so the code did not need to change.
+
+**Policy:** a version leaves this table in the same release that drops it from CI,
+the release tarballs and `docker/`.
 
 ## SPI surface used
 
@@ -36,7 +37,7 @@ Packaging them causes `LinkageError`.
 
 ## N5 — `@baleia-secret[...]` placeholder safety
 
-The DDL call chain in both 482 and 483:
+The DDL call chain in 483 (unchanged from 482):
 
 ```
 CreateCatalogTask.execute
@@ -51,8 +52,8 @@ No `secretsResolver.getResolvedConfiguration` appears on this path. A
 `@baleia-secret[...]` placeholder in a `CREATE CATALOG` statement reaches our
 `SecretResolver` unmutilated.
 
-**Verified by:** compilation against both SPI versions and acceptance tests
-passing on both Trino images. If a future version introduces a secrets resolver
+**Verified by:** compilation against the SPI and acceptance tests passing on the
+Trino image. If a future version introduces a secrets resolver
 on the DDL path, the `@baleia-secret[...]` syntax (outside `${...}`) still
 survives — but the behavior would change and must be re-evaluated.
 
@@ -62,8 +63,8 @@ When a new Trino version ships:
 
 1. Compile against the new SPI: `./mvnw verify -Dtrino.version=<new>`
 2. Run acceptance against the new image: `TRINO_IMAGE=trinodb/trino:<new> ./docker/acceptance.sh`
-3. If both pass, add the version to the matrix and this table, remove the
-   oldest, update the floor in CI, and release.
+3. If both pass, add the version to the matrix (CI and release) and this table,
+   decide whether to keep the previous one, and release.
 4. If compilation fails, the SPI surface changed — evaluate whether T5
    (multi-module) is needed.
 5. If acceptance fails at runtime (`NoSuchMethodError`, `AbstractMethodError`),

@@ -7,7 +7,7 @@
 #
 # TRINO_VERSION must match (or be within) this plugin's supported window —
 # see the table in README.md ("Supported Trino versions").
-ARG TRINO_VERSION=482
+ARG TRINO_VERSION=483
 
 FROM maven:3.9-eclipse-temurin-25 AS build
 WORKDIR /build
