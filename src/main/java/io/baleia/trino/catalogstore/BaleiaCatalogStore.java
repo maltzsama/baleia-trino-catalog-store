@@ -17,6 +17,10 @@ import io.trino.spi.connector.ConnectorName;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
+import static io.trino.spi.StandardErrorCode.CATALOG_STORE_ERROR;
+import static java.lang.String.format;
 
 
 /**
@@ -54,6 +58,14 @@ public class BaleiaCatalogStore
 
     private final Database database;
     private final SecretResolver secretResolver;
+
+    // CREATE CATALOG calls createCatalogProperties() and then addOrReplaceCatalog() back to
+    // back, on one thread, under CoordinatorDynamicCatalogManager's catalogsUpdateLock. The
+    // second call only receives the resolved properties, so the original text (with the
+    // @baleia-secret placeholders) is kept here, by catalog name, to be persisted instead.
+    private final Map<String, PendingCatalog> pending = new ConcurrentHashMap<>();
+
+    private record PendingCatalog(String version, Map<String, String> rawProperties) {}
 
     @Inject
     public BaleiaCatalogStore(Database database, SecretResolver secretResolver)
@@ -124,6 +136,7 @@ public class BaleiaCatalogStore
     {
         Map<String, String> resolved = secretResolver.resolve(properties);
         CatalogVersion version = computeCatalogVersion(catalogName, connectorName, resolved);
+        pending.put(catalogName.toString(), new PendingCatalog(version.toString(), ImmutableMap.copyOf(properties)));
         return new CatalogProperties(catalogName, version, connectorName, ImmutableMap.copyOf(resolved));
     }
 
@@ -131,17 +144,30 @@ public class BaleiaCatalogStore
      * Persists a catalog row via UPSERT. Sets {@code sync_status='synced'}
      * and {@code updated_by='trino'}.
      *
-     * @param catalogProperties the resolved catalog to persist
+     * <p>The row holds the properties as the user wrote them, with the
+     * {@code @baleia-secret[...]} placeholders intact: resolved values never reach the
+     * database. They are resolved again on every boot by {@link #getCatalogs()}.
+     *
+     * @param catalogProperties the catalog returned by {@link #createCatalogProperties}
+     * @throws TrinoException if the catalog was not created through this store
      */
     @Override
     public void addOrReplaceCatalog(CatalogProperties catalogProperties)
     {
         String name = catalogProperties.name().toString();
         String connector = catalogProperties.connectorName().toString();
-        Map<String, String> props = catalogProperties.properties();
         String version = catalogProperties.version().toString();
 
-        CatalogRow row = new CatalogRow(name, connector, props);
+        // Never fall back to catalogProperties.properties(): those are the resolved values.
+        PendingCatalog original = pending.remove(name);
+        if (original == null || !original.version().equals(version)) {
+            throw new TrinoException(CATALOG_STORE_ERROR,
+                    format("Refusing to persist catalog '%s': it was not created through createCatalogProperties, "
+                            + "so the original @baleia-secret placeholders are unknown and the resolved values "
+                            + "would be written to the database", name));
+        }
+
+        CatalogRow row = new CatalogRow(name, connector, original.rawProperties());
         database.upsert(row, version);
         log.info("Catalog '%s' persisted in Baleia (version=%s)", name, version);
     }

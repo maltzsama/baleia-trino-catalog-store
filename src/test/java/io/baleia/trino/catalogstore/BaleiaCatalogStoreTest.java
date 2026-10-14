@@ -7,6 +7,11 @@ import io.trino.spi.catalog.CatalogStore;
 import io.trino.spi.connector.CatalogVersion;
 import io.trino.spi.connector.ConnectorName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -20,6 +25,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class BaleiaCatalogStoreTest
 {
+    @TempDir
+    Path tempDir;
+
     @Test
     void getCatalogsReturnsResolvedStoredCatalogs()
     {
@@ -112,6 +120,79 @@ class BaleiaCatalogStoreTest
     }
 
     @Test
+    void addOrReplaceCatalogPersistsPlaceholdersNotResolvedSecrets() throws IOException
+    {
+        Files.writeString(tempDir.resolve("db-password.txt"), "from-file\n");
+        RecordingDatabase db = new RecordingDatabase();
+        db.secretCatalog = Map.of("token", "from-catalog");
+        SecretResolver resolver = new SecretResolver(db, configWithBaseDir(tempDir));
+        BaleiaCatalogStore store = new BaleiaCatalogStore(db, resolver);
+        Map<String, String> ddl = Map.of(
+                "plain", "value",
+                "password", "@baleia-secret[file:db-password.txt]",
+                "user", "@baleia-secret[env:PATH]",
+                "token", "@baleia-secret[vault:token]");
+
+        CatalogProperties props = store.createCatalogProperties(new CatalogName("novo"), new ConnectorName("tpch"), ddl);
+        store.addOrReplaceCatalog(props);
+
+        // The connector gets the resolved values...
+        assertEquals("from-file", props.properties().get("password"));
+        assertEquals(System.getenv("PATH"), props.properties().get("user"));
+        assertEquals("from-catalog", props.properties().get("token"));
+        // ...but the database row keeps the original text.
+        assertEquals(ddl, db.upserts.get(0).row.properties());
+        // The version is still computed over the resolved values.
+        assertEquals(props.version().toString(), db.upserts.get(0).version);
+    }
+
+    @Test
+    void addOrReplaceCatalogRefusesCatalogNotCreatedByThisStore()
+    {
+        RecordingDatabase db = new RecordingDatabase();
+        BaleiaCatalogStore store = new BaleiaCatalogStore(db, new SecretResolver(db, baseConfig()));
+        CatalogName name = new CatalogName("novo");
+        ConnectorName connector = new ConnectorName("tpch");
+        CatalogProperties foreign = new CatalogProperties(
+                name, new CatalogVersion("0".repeat(64)), connector, Map.of("password", "resolved-secret"));
+
+        assertThrows(TrinoException.class, () -> store.addOrReplaceCatalog(foreign));
+        assertTrue(db.upserts.isEmpty());
+    }
+
+    @Test
+    void addOrReplaceCatalogRefusesStaleVersion()
+    {
+        RecordingDatabase db = new RecordingDatabase();
+        BaleiaCatalogStore store = new BaleiaCatalogStore(db, new SecretResolver(db, baseConfig()));
+        CatalogName name = new CatalogName("novo");
+        ConnectorName connector = new ConnectorName("tpch");
+        CatalogProperties first = store.createCatalogProperties(name, connector, Map.of("a", "1"));
+        store.createCatalogProperties(name, connector, Map.of("a", "2"));
+
+        assertThrows(TrinoException.class, () -> store.addOrReplaceCatalog(first));
+        assertTrue(db.upserts.isEmpty());
+    }
+
+    @Test
+    void rotatedFileSecretTakesEffectOnNextBootWithoutRecreatingCatalog() throws IOException
+    {
+        Files.writeString(tempDir.resolve("db-password.txt"), "old");
+        RecordingDatabase db = new RecordingDatabase();
+        SecretResolver resolver = new SecretResolver(db, configWithBaseDir(tempDir));
+        BaleiaCatalogStore store = new BaleiaCatalogStore(db, resolver);
+        Map<String, String> ddl = Map.of("password", "@baleia-secret[file:db-password.txt]");
+
+        store.addOrReplaceCatalog(store.createCatalogProperties(new CatalogName("novo"), new ConnectorName("tpch"), ddl));
+        // What the database now holds is what getCatalogs() reads at the next boot.
+        db.rows.add(db.upserts.get(0).row);
+        Files.writeString(tempDir.resolve("db-password.txt"), "new");
+
+        CatalogProperties booted = new ArrayList<>(store.getCatalogs()).get(0).loadProperties();
+        assertEquals("new", booted.properties().get("password"));
+    }
+
+    @Test
     void removeCatalogSoftDeletes()
     {
         RecordingDatabase db = new RecordingDatabase();
@@ -194,5 +275,10 @@ class BaleiaCatalogStoreTest
                 .setJdbcUrl("jdbc:postgresql://localhost:5432/_unused")
                 .setUsername("u")
                 .setPassword("p");
+    }
+
+    private BaleiaCatalogStoreConfig configWithBaseDir(Path dir)
+    {
+        return baseConfig().setSecretFileBaseDir(dir.toString());
     }
 }
