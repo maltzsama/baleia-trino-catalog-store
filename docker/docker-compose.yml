@@ -27,7 +27,7 @@ services:
       retries: 15
 
   trino:
-    image: ${TRINO_IMAGE:-trinodb/trino:482}
+    image: ${TRINO_IMAGE:-trinodb/trino:483}
     depends_on:
       postgres:
         condition: service_healthy
@@ -49,13 +49,13 @@ services:
       # Important: etc/catalog is NOT mounted — must remain empty in the final image.
       #
       # jvm.config and node.properties are intentionally NOT
-      # mounted. The trinodb/trino:482 image ships both files with flags
+      # mounted. The trinodb/trino:483 image ships both files with flags
       # the JDK 25 runtime requires (libjvmkill, --add-opens equivalents
       # via agentpath, RAM-percentage sizing, code cache 256M, the
       # maxCachedBufferSize knob, etc.). Hand-writing a minimal jvm.config
       # here would silently strip those flags and risk boot failure. If a
       # heap override is ever needed, copy the file out of the image with
-      # `docker run --rm trinodb/trino:482 cat /etc/trino/jvm.config` and
+      # `docker run --rm trinodb/trino:483 cat /etc/trino/jvm.config` and
       # patch only what changed — never write one from scratch.
 
 volumes:
