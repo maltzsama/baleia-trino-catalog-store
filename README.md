@@ -18,7 +18,7 @@ The actual SPI 482 signatures are documented in
 | When | Trino calls | Plugin does |
 |---|---|---|
 | Coordinator boot | `getCatalogs()` | `SELECT` enabled rows; per-row: parse, validate name, **eagerly resolve `@baleia-secret[...]`**; bad rows mark `sync_status='error'` and are skipped; total DB failure retries with backoff then fails the boot |
-| `CREATE CATALOG` | `createCatalogProperties()` then `addOrReplaceCatalog()` | Resolves `@baleia-secret[...]` (fails the DDL on unresolved/circular reference), `UPSERT`s the row carrying the computed `catalog_version` |
+| `CREATE CATALOG` | `createCatalogProperties()` then `addOrReplaceCatalog()` | Resolves `@baleia-secret[...]` (fails the DDL on unresolved/circular reference) for the connector, and `UPSERT`s the row with the **original text, placeholders intact**, carrying the `catalog_version` computed over the resolved values |
 | `DROP CATALOG` | `removeCatalog()` | `UPDATE ... SET enabled = false` (soft delete) |
 
 The plugin does **not** poll — runtime propagation is the backend's responsibility
@@ -340,7 +340,8 @@ slipped through. Run it; do not skip it.
 | T6b  | `tpch_dois` does not return after restart | **PASS** |
 | T7   | Row with non-string JSON value is skipped; boot survives; `sync_status='error'` | **PASS** |
 | T8a  | `CREATE CATALOG` with placeholder resolves and catalog appears | **PASS** |
-| T8b  | Registry stores the resolved value, not the placeholder | **PASS** |
+| T8b  | Registry stores the placeholder, never the resolved value (was inverted before #72) | **PASS** |
+| T8d  | The placeholder is resolved again at boot: the catalog survives a restart | **PASS** |
 | T8c  | Query log preserves the placeholder, never the resolved value | **PASS** |
 | T9   | `INSERT ... catalog_name='system'` rejected by DB `CHECK` | **PASS** |
 
@@ -460,8 +461,8 @@ installation. See "Installing in an existing Trino" section.
   cannot read users/queries/other metadata.
 * `SecretResolver` exists so the `CREATE CATALOG` text — which Trino logs and
   exposes in `system.runtime.queries` — never contains real credentials.
-  The persisted value in the DB carries the resolved secret; the log stays as
-  a placeholder. The D4b rule rejects any value that still looks like a
+  The DB row keeps the placeholder too: resolved values live only in memory
+  and are re-resolved on every boot. The D4b rule rejects any value that still looks like a
   `@baleia-secret[...]` after resolution, eliminating the circular-reference
   and bad-regex escape hatches.
 
@@ -471,14 +472,22 @@ installation. See "Installing in an existing Trino" section.
 
 | Scheme | Syntax | Resolution | Rotation |
 |---|---|---|---|
-| `catalog:` | `@baleia-secret[<catalog>:<key>]` | Another row in `trino_catalog_registry` | Via `CREATE CATALOG` DDL |
-| `file:` | `@baleia-secret[file:<name>]` | File under `baleia.secret-file-base-dir` | kubelet updates Secret mount; next catalog reload picks up |
+| `catalog:` | `@baleia-secret[<catalog>:<key>]` | Another row in `trino_catalog_registry` | Picked up on the next coordinator restart |
+| `file:` | `@baleia-secret[file:<name>]` | File under `baleia.secret-file-base-dir` | kubelet updates Secret mount; picked up on the next coordinator restart |
 | `env:` | `@baleia-secret[env:<VAR>]` | Process environment variable | Requires Trino restart |
 
 **`file:` (recommended for Kubernetes):**
 The backend writes only the reference `@baleia-secret[file:db-password.txt]`
 to the database. The actual credential lives in a Kubernetes Secret mounted as a
-file. The Postgres database never contains the credential in cleartext.
+file. The Postgres database never contains the credential in cleartext, whether
+the row was written by the backend or by `CREATE CATALOG` in Trino.
+
+Rows written by plugin 0.7.0 or earlier through `CREATE CATALOG` may still hold
+the resolved value in `properties`. If the catalog is active, `CREATE CATALOG`
+fails with `ALREADY_EXISTS` and `CREATE CATALOG IF NOT EXISTS` leaves it unchanged:
+`DROP CATALOG` it and create it again with the `@baleia-secret[...]` reference, or
+edit the row and restart the coordinator. Rotate any credential that was stored
+that way.
 
 ```yaml
 # Kubernetes Pod spec
@@ -504,7 +513,7 @@ Restrictions on `file:`:
 * File names may only contain `[A-Za-z0-9._-]` — no `/`, no `..`, no absolute path.
 * Symlinks that resolve outside the base directory are rejected.
 * Maximum file size: 64 KiB.
-* Files are re-read on every `resolve()` call — no Trino restart needed for rotation.
+* Files are re-read on every `resolve()` call, which happens at coordinator boot and on `CREATE CATALOG`. The registry keeps only the reference, so rotating the file needs a coordinator restart, not a new `CREATE CATALOG`.
 
 **`env:` (for non-Kubernetes deployments):**
 Reads an environment variable from the Trino process. The variable must be set
