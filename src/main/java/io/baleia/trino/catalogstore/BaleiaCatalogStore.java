@@ -100,7 +100,7 @@ public class BaleiaCatalogStore
             }
         }
         // A row that failed on an earlier boot and loads fine now must not stay 'error'.
-        database.clearErrors(loaded.build());
+        database.markSynced(loaded.build());
         return out.build();
     }
 

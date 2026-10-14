@@ -382,7 +382,7 @@ public class Database {
      * Best-effort reset of {@code sync_status='error'} to {@code 'synced'} for catalogs
      * that loaded fine on this boot. Rows in any other status are left untouched.
      */
-    public void clearErrors(Collection<String> catalogNames) {
+    public void markSynced(Collection<String> catalogNames) {
         if (catalogNames.isEmpty()) {
             return;
         }
