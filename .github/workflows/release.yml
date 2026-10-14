@@ -31,15 +31,11 @@ jobs:
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
-    # Release steps use the PAT secret (fine-grained, Contents + Pull requests
-    # write): GITHUB_TOKEN gets "403 Resource not accessible by integration" when
-    # creating a release on this repo. Packages and GHCR keep GITHUB_TOKEN, since
-    # fine-grained PATs cannot publish packages.
     steps:
     - uses: googleapis/release-please-action@v5
       id: release
       with:
-        token: ${{ secrets.PAT }}
+        token: ${{ secrets.GITHUB_TOKEN }}
 
   # Manual path: creates the release (and its tag) at `ref` when it does not exist,
   # so a release never depends on release-please succeeding at creating it. The
@@ -52,7 +48,7 @@ jobs:
     steps:
     - name: Create the release if it does not exist
       env:
-        GH_TOKEN: ${{ secrets.PAT }}
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         TAG: ${{ inputs.tag }}
         TARGET: ${{ inputs.ref }}
       run: |
@@ -163,7 +159,7 @@ jobs:
 
     - name: Upload the tarball to the release
       env:
-        GH_TOKEN: ${{ secrets.PAT }}
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || needs.release-please.outputs.tag_name }}
         NAME: ${{ steps.bundle.outputs.name }}
       run: gh release upload "$TAG" "$NAME" "$NAME.sha256" --clobber
