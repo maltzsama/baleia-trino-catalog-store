@@ -146,6 +146,26 @@ class SecretResolverTest
     }
 
     @Test
+    void fileSchemeStripsTrailingCrlf() throws IOException
+    {
+        Files.writeString(tempDir.resolve("token.txt"), "tok123\r\n");
+        SecretResolver resolver = new SecretResolver(dbReturningEmpty(), configWithBaseDir(tempDir));
+        assertEquals("tok123", resolver.resolve(Map.of("token", "@baleia-secret[file:token.txt]")).get("token"));
+    }
+
+    @Test
+    void fileSchemeAcceptsSymlinkWhenBaseDirIsBehindSymlink() throws IOException
+    {
+        Path realBase = Files.createDirectory(tempDir.resolve("real"));
+        Files.writeString(realBase.resolve("target.txt"), "ok");
+        Files.createSymbolicLink(realBase.resolve("link.txt"), realBase.resolve("target.txt"));
+        Path linkedBase = Files.createSymbolicLink(tempDir.resolve("linked"), realBase);
+
+        SecretResolver resolver = new SecretResolver(dbReturningEmpty(), configWithBaseDir(linkedBase));
+        assertEquals("ok", resolver.resolve(Map.of("k", "@baleia-secret[file:link.txt]")).get("k"));
+    }
+
+    @Test
     void fileSchemeRejectsOversizedFile() throws IOException
     {
         byte[] big = new byte[64 * 1024 + 1];

@@ -56,6 +56,8 @@ class BaleiaCatalogStoreTest
         assertEquals(1, catalogs.size());
         assertEquals(new CatalogName("boa"), catalogs.get(0).name());
         assertEquals(List.of("quebrada"), db.markedErrors.stream().map(Mark::catalogName).toList());
+        // Only the row that loaded is cleared; the broken one keeps its error marker.
+        assertEquals(List.of("boa"), db.clearedErrors);
     }
 
     @Test
@@ -129,6 +131,7 @@ class BaleiaCatalogStoreTest
         final List<Upsert> upserts = new ArrayList<>();
         final List<String> softDeletes = new ArrayList<>();
         final List<Mark> markedErrors = new ArrayList<>();
+        final List<String> clearedErrors = new ArrayList<>();
         Map<String, String> secretCatalog;
         int loadAllCalls;
 
@@ -160,6 +163,12 @@ class BaleiaCatalogStoreTest
         public void markError(String catalogName, String message)
         {
             markedErrors.add(new Mark(catalogName, message));
+        }
+
+        @Override
+        public void clearErrors(java.util.Collection<String> catalogNames)
+        {
+            clearedErrors.addAll(catalogNames);
         }
 
         @Override

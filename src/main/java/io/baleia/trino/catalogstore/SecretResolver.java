@@ -163,7 +163,7 @@ public class SecretResolver
      * Resolves a {@code @baleia-secret[file:name]} reference from a file.
      *
      * <p>Reads the file on every call (no cross-call caching) to support
-     * secret rotation without Trino restart. A trailing {@code \n} is stripped.
+     * secret rotation without Trino restart. A single trailing {@code \n} or {@code \r\n} is stripped.
      *
      * @param key      the property key (for error messages)
      * @param fileName the file name (no path separators, no {@code ..})
@@ -191,6 +191,16 @@ public class SecretResolver
                     "Property '" + key + "' has invalid secret-file-base-dir: " + secretFileBaseDir);
         }
 
+        // Symlinks in the base dir itself (e.g. /var -> /private/var) must not make
+        // every symlinked secret look like it escapes the base.
+        Path realBasePath;
+        try {
+            realBasePath = basePath.toRealPath();
+        }
+        catch (IOException e) {
+            realBasePath = basePath;
+        }
+
         Path filePath;
         try {
             filePath = basePath.resolve(fileName).normalize();
@@ -213,7 +223,7 @@ public class SecretResolver
         if (Files.isSymbolicLink(filePath)) {
             try {
                 Path realPath = filePath.toRealPath();
-                if (!realPath.startsWith(basePath)) {
+                if (!realPath.startsWith(realBasePath)) {
                     throw new IllegalStateException(
                             "Property '" + key + "' symbolic link points outside base directory: " + fileName);
                 }
@@ -226,6 +236,11 @@ public class SecretResolver
 
         byte[] bytes;
         try {
+            // Check the size before reading so an oversized file is never loaded.
+            if (Files.size(filePath) > FILE_MAX_SIZE) {
+                throw new IllegalStateException(
+                        "Property '" + key + "' file exceeds 64 KiB limit: " + fileName);
+            }
             bytes = Files.readAllBytes(filePath);
         }
         catch (IOException e) {
@@ -233,13 +248,17 @@ public class SecretResolver
                     "Property '" + key + "' cannot read file: " + fileName);
         }
 
+        // The file may have grown between the size check and the read.
         if (bytes.length > FILE_MAX_SIZE) {
             throw new IllegalStateException(
                     "Property '" + key + "' file exceeds 64 KiB limit: " + fileName);
         }
 
         String content = new String(bytes, StandardCharsets.UTF_8);
-        if (content.endsWith("\n")) {
+        if (content.endsWith("\r\n")) {
+            content = content.substring(0, content.length() - 2);
+        }
+        else if (content.endsWith("\n")) {
             content = content.substring(0, content.length() - 1);
         }
 
