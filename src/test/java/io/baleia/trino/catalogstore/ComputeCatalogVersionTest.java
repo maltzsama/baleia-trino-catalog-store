@@ -31,7 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  *   <li>iteration in ascending key alphanumeric order (ImmutableSortedMap)</li>
  * </ul>
  *
- * <p>The shared vectors live in {@code src/test/resources/catalog_version_vectors.json}. The
+ * <p>The shared vectors live in {@code contract/catalog_version_vectors.json}. The
  * Go side of this contract consumes the same JSON (the file ships in the repo under
  * {@code catalogs/testdata/}) and implements the algorithm in
  * {@code backend/internal/catalogs.Version}. Both sides MUST produce every hash in the file.
@@ -79,7 +79,7 @@ class ComputeCatalogVersionTest
      *   <li>assert both are equal AND both equal the recorded {@code expected_hash}.</li>
      * </ul>
      *
-     * <p>The vector file lives at {@code src/test/resources/catalog_version_vectors.json}.
+     * <p>The vector file lives at {@code contract/catalog_version_vectors.json}.
      * To add a vector or reset a hash, edit it; on the first run with "REPLACE" as the
      * expected_hash this test fails and the failure message prints the actual value.
      */

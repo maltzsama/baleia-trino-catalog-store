@@ -153,7 +153,13 @@ jobs:
       run: |
         set -euo pipefail
         NAME="baleia-catalog-store-${TAG#v}+trino${TRINO}.tar.gz"
-        tar -czf "$NAME" -C target baleia-catalog-store
+        # The plugin directory, the shared contract fixtures (Baleia's contract
+        # tests read them from the release it pins) and the VERSION stamp the
+        # init container checks.
+        rm -rf dist && mkdir -p dist
+        cp -r target/baleia-catalog-store contract dist/
+        echo "${TAG#v}+trino${TRINO}" > dist/VERSION
+        tar -czf "$NAME" -C dist baleia-catalog-store contract VERSION
         sha256sum "$NAME" | cut -d' ' -f1 > "$NAME.sha256"
         echo "name=$NAME" >> "$GITHUB_OUTPUT"
 

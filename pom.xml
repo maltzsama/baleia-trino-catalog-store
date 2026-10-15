@@ -136,6 +136,16 @@
     </dependencies>
 
     <build>
+        <!-- contract/ holds the fixtures shared with Baleia; the tests read
+             them from the classpath root, and releases ship them. -->
+        <testResources>
+            <testResource>
+                <directory>src/test/resources</directory>
+            </testResource>
+            <testResource>
+                <directory>contract</directory>
+            </testResource>
+        </testResources>
         <resources>
             <resource>
                 <directory>src/main/resources</directory>
