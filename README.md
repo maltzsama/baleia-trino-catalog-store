@@ -463,6 +463,14 @@ installation. See "Installing in an existing Trino" section.
   and are re-resolved on every boot. The D4b rule rejects any value that still looks like a
   `@baleia-secret[...]` after resolution, eliminating the circular-reference
   and bad-regex escape hatches.
+* The exception is a **reference to the catalog itself**
+  (`@baleia-secret[<this catalog>:<key>]`), which Baleia uses: it writes the
+  real value into the row and sends the placeholder in the DDL. The row is
+  what the reference reads, and the `UPSERT` replaces it, so storing the
+  placeholder would make the row point at itself and the next boot would skip
+  the catalog as circular. The row keeps the value it already held. Rows
+  written that way by 0.8.0–0.9.0 lost the value: re-create the catalog (in
+  Baleia, sync its binding) to write it again.
 
 ### Secret resolution schemes
 
@@ -470,7 +478,7 @@ installation. See "Installing in an existing Trino" section.
 
 | Scheme | Syntax | Resolution | Rotation |
 |---|---|---|---|
-| `catalog:` | `@baleia-secret[<catalog>:<key>]` | Another row in `trino_catalog_registry` | Picked up on the next coordinator restart |
+| `catalog:` | `@baleia-secret[<catalog>:<key>]` | A row in `trino_catalog_registry` (the catalog's own row keeps the value, see above) | Picked up on the next coordinator restart |
 | `file:` | `@baleia-secret[file:<name>]` | File under `baleia.secret-file-base-dir` | kubelet updates Secret mount; picked up on the next coordinator restart |
 | `env:` | `@baleia-secret[env:<VAR>]` | Process environment variable | Requires Trino restart |
 

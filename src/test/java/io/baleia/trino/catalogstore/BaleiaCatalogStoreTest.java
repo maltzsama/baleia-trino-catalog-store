@@ -209,6 +209,45 @@ class BaleiaCatalogStoreTest
     }
 
     @Test
+    void selfReferencedSecretSurvivesTheNextBoot()
+    {
+        // Baleia writes the real value into the row, then sends CREATE CATALOG with a
+        // placeholder pointing at that row. The row the plugin persists must still hold
+        // the value, or the next boot skips the catalog as a circular reference.
+        RecordingDatabase db = new RecordingDatabase();
+        db.secretCatalog = Map.of("iceberg.rest-catalog.oauth2.credential", "admin:s3cret");
+        BaleiaCatalogStore store = new BaleiaCatalogStore(db, new SecretResolver(db, baseConfig()));
+        Map<String, String> ddl = Map.of(
+                "iceberg.rest-catalog.oauth2.credential", "@baleia-secret[lake:iceberg.rest-catalog.oauth2.credential]",
+                "iceberg.rest-catalog.uri", "http://polaris:8181/api/catalog");
+
+        store.addOrReplaceCatalog(store.createCatalogProperties(new CatalogName("lake"), new ConnectorName("iceberg"), ddl));
+        CatalogRow persisted = db.upserts.get(0).row;
+        assertEquals("admin:s3cret", persisted.properties().get("iceberg.rest-catalog.oauth2.credential"));
+
+        // Next boot: the row is now what loadProperties() and loadAll() return.
+        db.rows.add(persisted);
+        db.secretCatalog = persisted.properties();
+        List<CatalogStore.StoredCatalog> booted = new ArrayList<>(store.getCatalogs());
+        assertEquals(1, booted.size());
+        assertTrue(db.markedErrors.isEmpty(), "no catalog may be skipped: " + db.markedErrors);
+        assertEquals("admin:s3cret", booted.get(0).loadProperties().properties().get("iceberg.rest-catalog.oauth2.credential"));
+    }
+
+    @Test
+    void otherCatalogsReferencesStayReferences()
+    {
+        RecordingDatabase db = new RecordingDatabase();
+        db.secretCatalog = Map.of("password", "vault-value");
+        BaleiaCatalogStore store = new BaleiaCatalogStore(db, new SecretResolver(db, baseConfig()));
+
+        store.addOrReplaceCatalog(store.createCatalogProperties(new CatalogName("vendas"), new ConnectorName("tpch"),
+                Map.of("password", "@baleia-secret[vault:password]")));
+
+        assertEquals("@baleia-secret[vault:password]", db.upserts.get(0).row.properties().get("password"));
+    }
+
+    @Test
     void removeCatalogSoftDeletes()
     {
         RecordingDatabase db = new RecordingDatabase();

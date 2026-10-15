@@ -136,8 +136,24 @@ public class BaleiaCatalogStore
     {
         Map<String, String> resolved = secretResolver.resolve(properties);
         CatalogVersion version = computeCatalogVersion(catalogName, connectorName, resolved);
-        pending.put(catalogName.toString(), new PendingCatalog(version.toString(), ImmutableMap.copyOf(properties)));
+        pending.put(catalogName.toString(), new PendingCatalog(version.toString(), persistedProperties(catalogName.toString(), properties, resolved)));
         return new CatalogProperties(catalogName, version, connectorName, ImmutableMap.copyOf(resolved));
+    }
+
+    /**
+     * What the row keeps: the DDL's text, placeholders intact, except a
+     * reference to the catalog itself ({@code @baleia-secret[<this catalog>:<key>]}).
+     * That value lives in this very row, which the UPSERT replaces: persisting
+     * the reference would leave the row pointing at itself, and the next boot
+     * would skip the catalog as a circular reference. So the row keeps the value
+     * it already held (the resolved one). {@code env:}, {@code file:} and other
+     * catalogs' references stay references.
+     */
+    static Map<String, String> persistedProperties(String catalogName, Map<String, String> raw, Map<String, String> resolved)
+    {
+        ImmutableMap.Builder<String, String> out = ImmutableMap.builder();
+        raw.forEach((key, value) -> out.put(key, SecretResolver.refersToCatalog(catalogName, value) ? resolved.get(key) : value));
+        return out.buildOrThrow();
     }
 
     /**
@@ -146,7 +162,9 @@ public class BaleiaCatalogStore
      *
      * <p>The row holds the properties as the user wrote them, with the
      * {@code @baleia-secret[...]} placeholders intact: resolved values never reach the
-     * database. They are resolved again on every boot by {@link #getCatalogs()}.
+     * database. They are resolved again on every boot by {@link #getCatalogs()}. The one
+     * exception is a reference to the catalog itself, which keeps the value the row
+     * already held (see {@link #persistedProperties}).
      *
      * @param catalogProperties the catalog returned by {@link #createCatalogProperties}
      * @throws TrinoException if the catalog was not created through this store
