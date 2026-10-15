@@ -72,6 +72,19 @@ public class SecretResolver
     }
 
     /**
+     * Whether {@code value} is a placeholder whose origin is {@code catalogName}
+     * itself, i.e. a secret the catalog's own registry row holds.
+     */
+    static boolean refersToCatalog(String catalogName, String value)
+    {
+        if (value == null) {
+            return false;
+        }
+        Matcher m = PLACEHOLDER.matcher(value);
+        return m.matches() && m.group(1).equals(catalogName);
+    }
+
+    /**
      * Resolves all placeholders in the given properties map.
      *
      * <p>Each value is checked against the {@code @baleia-secret[...]} pattern.

@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -317,5 +318,16 @@ class SecretResolverTest
                 .setUsername("u")
                 .setPassword("p")
                 .setSecretFileBaseDir(dir.toString());
+    }
+
+    @Test
+    void refersToCatalogMatchesOnlyTheCatalogsOwnPlaceholders()
+    {
+        assertTrue(SecretResolver.refersToCatalog("lake", "@baleia-secret[lake:k]"));
+        assertFalse(SecretResolver.refersToCatalog("lake", "@baleia-secret[other:k]"));
+        assertFalse(SecretResolver.refersToCatalog("lake", "@baleia-secret[env:K]"));
+        assertFalse(SecretResolver.refersToCatalog("lake", "prefix @baleia-secret[lake:k]"));
+        assertFalse(SecretResolver.refersToCatalog("lake", "plain"));
+        assertFalse(SecretResolver.refersToCatalog("lake", null));
     }
 }
