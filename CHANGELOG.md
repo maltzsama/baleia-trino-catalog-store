@@ -31,6 +31,14 @@
 
 * add file: and env: secret resolution schemes ([55954bc](https://github.com/maltzsama/baleia-trino-catalog-store/commit/55954bcb6e025e6f29977f51b16142d44ea12141))
 
+## [0.9.0](https://github.com/maltzsama/baleia-trino-catalog-store/compare/v0.8.0...v0.9.0) (2026-10-15)
+
+
+### Features
+
+* **contract:** shared contract fixtures in contract/, shipped in the release tarball ([4144bd9](https://github.com/maltzsama/baleia-trino-catalog-store/commit/4144bd91523446402e4d3167319fb45b575b3d32))
+* **contract:** shared contract fixtures in contract/, shipped in the release tarball ([f6def28](https://github.com/maltzsama/baleia-trino-catalog-store/commit/f6def28839ce56256f4ac9e268e89f3d57c9b923))
+
 ## [0.8.0](https://github.com/maltzsama/baleia-trino-catalog-store/compare/v0.7.0...v0.8.0) (2026-10-14)
 
 
