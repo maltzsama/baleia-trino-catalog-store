@@ -31,6 +31,14 @@
 
 * add file: and env: secret resolution schemes ([55954bc](https://github.com/maltzsama/baleia-trino-catalog-store/commit/55954bcb6e025e6f29977f51b16142d44ea12141))
 
+## [0.9.1](https://github.com/maltzsama/baleia-trino-catalog-store/compare/v0.9.0...v0.9.1) (2026-10-15)
+
+
+### Bug Fixes
+
+* **secrets:** keep self-referenced secrets in the row, so the catalog survives a restart ([a218a03](https://github.com/maltzsama/baleia-trino-catalog-store/commit/a218a03dbc967af7036efd1cf8de597608401eb9))
+* **secrets:** keep self-referenced secrets in the row, so the catalog survives a restart ([28a4a62](https://github.com/maltzsama/baleia-trino-catalog-store/commit/28a4a623518fcc589896a9fb545b20319201dbb0))
+
 ## [0.9.0](https://github.com/maltzsama/baleia-trino-catalog-store/compare/v0.8.0...v0.9.0) (2026-10-15)
 
 
