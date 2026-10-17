@@ -12,6 +12,9 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -188,6 +191,59 @@ class BaleiaCatalogStoreTest
         store.addOrReplaceCatalog(current);
 
         assertEquals(Map.of("a", "2"), db.upserts.get(0).row.properties());
+    }
+
+    @Test
+    void pendingRawEvicted()
+    {
+        RecordingDatabase db = new RecordingDatabase();
+        MutableClock clock = new MutableClock(Instant.parse("2026-01-01T00:00:00Z"));
+        BaleiaCatalogStore store = new BaleiaCatalogStore(db, new SecretResolver(db, baseConfig()), clock);
+        CatalogProperties stale = store.createCatalogProperties(new CatalogName("stale"), new ConnectorName("tpch"), Map.of("a", "1"));
+
+        clock.advance(BaleiaCatalogStore.PENDING_TTL.plusSeconds(1));
+        // A later CREATE sweeps the entry the failed one left behind.
+        CatalogProperties fresh = store.createCatalogProperties(new CatalogName("fresh"), new ConnectorName("tpch"), Map.of("b", "2"));
+
+        // The old DDL path can no longer persist: its placeholder text is gone.
+        assertThrows(TrinoException.class, () -> store.addOrReplaceCatalog(stale));
+        // The new one still persists.
+        store.addOrReplaceCatalog(fresh);
+        assertEquals(List.of("fresh"), db.upserts.stream().map(u -> u.row.catalogName()).toList());
+    }
+
+    private static final class MutableClock
+            extends Clock
+    {
+        private Instant now;
+
+        MutableClock(Instant now)
+        {
+            this.now = now;
+        }
+
+        void advance(Duration duration)
+        {
+            now = now.plus(duration);
+        }
+
+        @Override
+        public java.time.ZoneId getZone()
+        {
+            return java.time.ZoneOffset.UTC;
+        }
+
+        @Override
+        public Clock withZone(java.time.ZoneId zone)
+        {
+            return this;
+        }
+
+        @Override
+        public Instant instant()
+        {
+            return now;
+        }
     }
 
     @Test
