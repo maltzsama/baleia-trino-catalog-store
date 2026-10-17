@@ -31,6 +31,14 @@
 
 * add file: and env: secret resolution schemes ([55954bc](https://github.com/maltzsama/baleia-trino-catalog-store/commit/55954bcb6e025e6f29977f51b16142d44ea12141))
 
+## [0.9.2](https://github.com/maltzsama/baleia-trino-catalog-store/compare/v0.9.1...v0.9.2) (2026-10-17)
+
+
+### Bug Fixes
+
+* **store:** evict pending catalog properties left by a failed CREATE ([#31](https://github.com/maltzsama/baleia-trino-catalog-store/issues/31)) ([9041b9b](https://github.com/maltzsama/baleia-trino-catalog-store/commit/9041b9b0e1a520716329b3955d25b4ff1db90d3b))
+* **store:** evict pending catalog properties left by a failed CREATE ([#31](https://github.com/maltzsama/baleia-trino-catalog-store/issues/31)) ([28ac220](https://github.com/maltzsama/baleia-trino-catalog-store/commit/28ac2205346861ceb7812fddca1e80aa60389e5c))
+
 ## [0.9.1](https://github.com/maltzsama/baleia-trino-catalog-store/compare/v0.9.0...v0.9.1) (2026-10-15)
 
 
