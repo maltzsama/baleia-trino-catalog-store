@@ -14,6 +14,9 @@ import io.trino.spi.catalog.CatalogStore;
 import io.trino.spi.connector.CatalogVersion;
 import io.trino.spi.connector.ConnectorName;
 
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -65,13 +68,26 @@ public class BaleiaCatalogStore
     // @baleia-secret placeholders) is kept here, by catalog name, to be persisted instead.
     private final Map<String, PendingCatalog> pending = new ConcurrentHashMap<>();
 
-    private record PendingCatalog(String version, Map<String, String> rawProperties) {}
+    // A CREATE that fails after createCatalogProperties() but before addOrReplaceCatalog()
+    // leaves an entry behind. Entries older than this are swept on every put, so a failing
+    // DDL path cannot leak memory.
+    static final Duration PENDING_TTL = Duration.ofMinutes(5);
+
+    private final Clock clock;
+
+    private record PendingCatalog(String version, Map<String, String> rawProperties, Instant createdAt) {}
 
     @Inject
     public BaleiaCatalogStore(Database database, SecretResolver secretResolver)
     {
+        this(database, secretResolver, Clock.systemUTC());
+    }
+
+    BaleiaCatalogStore(Database database, SecretResolver secretResolver, Clock clock)
+    {
         this.database = database;
         this.secretResolver = secretResolver;
+        this.clock = clock;
     }
 
     /**
@@ -136,8 +152,17 @@ public class BaleiaCatalogStore
     {
         Map<String, String> resolved = secretResolver.resolve(properties);
         CatalogVersion version = computeCatalogVersion(catalogName, connectorName, resolved);
-        pending.put(catalogName.toString(), new PendingCatalog(version.toString(), persistedProperties(catalogName.toString(), properties, resolved)));
+        Instant now = clock.instant();
+        evictPending(now);
+        pending.put(catalogName.toString(), new PendingCatalog(version.toString(), persistedProperties(catalogName.toString(), properties, resolved), now));
         return new CatalogProperties(catalogName, version, connectorName, ImmutableMap.copyOf(resolved));
+    }
+
+    /** Drops pending entries a CREATE left behind for longer than {@link #PENDING_TTL}. */
+    private void evictPending(Instant now)
+    {
+        Instant cutoff = now.minus(PENDING_TTL);
+        pending.entrySet().removeIf(entry -> entry.getValue().createdAt().isBefore(cutoff));
     }
 
     /**
