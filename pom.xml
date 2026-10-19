@@ -19,7 +19,7 @@
         <java.release>25</java.release>
 
         <!-- PHASE 0 (tag 483): same versions as Trino's pom.xml -->
-        <trino.version>483</trino.version>
+        <trino.version>484</trino.version>
         <airlift.version>450</airlift.version>
 
         <guice.version>7.0.0</guice.version>
