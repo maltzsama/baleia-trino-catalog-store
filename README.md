@@ -526,6 +526,35 @@ Reads an environment variable from the Trino process. The variable must be set
 before the JVM starts; rotating the value requires restarting the coordinator.
 This is documented as a limitation — use `file:` in Kubernetes when possible.
 
+### Registry values sealed at rest (Phase B, baleia#200 / D4)
+
+After Phase A, a row can still hold **catalog-origin** resolved values (the
+catalog's reference to its own row). Phase B seals them with a **dedicated**
+key, never a JWT secret:
+
+```properties
+baleia.registry-key=<32+ random chars>
+baleia.registry-key-previous=<old key>   # rotation only
+```
+
+* A sealed value is `@baleia-enc[v1:<key-id>:<base64(nonce|ciphertext)>]`.
+* Derivation matches Baleia's Go backend byte for byte:
+  `HKDF-SHA256(ikm=key, salt=32 zero bytes, info="baleia/registry/v1", 32)`;
+  `key-id` is the first 8 hex chars of `SHA-256(derived key)`.
+* AES-256-GCM, 12-byte nonce prefixed, no AAD.
+* `SecretResolver` decrypts envelopes at boot and on `CREATE CATALOG`; the
+  plugin seals the one value it persists itself (a self-reference). External
+  `env:`/`file:`/other-catalog references stay references.
+* `catalog_version` is still hashed over the **resolved** plaintext, so the Go
+  backend and the plugin keep agreeing.
+* An empty `baleia.registry-key` keeps Phase A (plaintext rows). A row that is
+  sealed while the key is missing fails closed, never serves the ciphertext.
+* Rotation: set the new key and keep the old one in
+  `baleia.registry-key-previous`; both decrypt, the current key encrypts.
+
+`RegistryCipherTest` pins a ciphertext produced by the Go backend, so a change
+to the derivation or envelope on either side fails the build.
+
 **Reserved names:** `env` and `file` are reserved as catalog names (they cannot
 be used as `catalog_name` in `trino_catalog_registry`) to avoid ambiguity with
 the scheme syntax.

@@ -22,6 +22,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -191,6 +192,28 @@ class BaleiaCatalogStoreTest
         store.addOrReplaceCatalog(current);
 
         assertEquals(Map.of("a", "2"), db.upserts.get(0).row.properties());
+    }
+
+    @Test
+    void createCatalogPropertiesSealsSelfReferenceWhenPhaseBEnabled()
+    {
+        RecordingDatabase db = new RecordingDatabase();
+        db.secretCatalog = Map.of("password", "plain-value");
+        BaleiaCatalogStore store = new BaleiaCatalogStore(db, new SecretResolver(db, configWithRegistryKey()));
+
+        CatalogProperties props = store.createCatalogProperties(
+                new CatalogName("lake"), new ConnectorName("postgresql"),
+                Map.of("connection-password", "@baleia-secret[lake:password]"));
+        store.addOrReplaceCatalog(props);
+
+        String stored = db.upserts.get(0).row.properties().get("connection-password");
+        assertTrue(stored.startsWith("@baleia-enc[v1:"), "self-reference must be sealed: " + stored);
+        assertFalse(stored.contains("plain-value"));
+
+        // Boot resolves the sealed value back to the plaintext.
+        db.rows.add(new CatalogRow("lake", "postgresql", db.upserts.get(0).row.properties()));
+        CatalogStore.StoredCatalog catalog = store.getCatalogs().iterator().next();
+        assertEquals("plain-value", catalog.loadProperties().properties().get("connection-password"));
     }
 
     @Test
@@ -391,5 +414,10 @@ class BaleiaCatalogStoreTest
     private BaleiaCatalogStoreConfig configWithBaseDir(Path dir)
     {
         return baseConfig().setSecretFileBaseDir(dir.toString());
+    }
+
+    private static BaleiaCatalogStoreConfig configWithRegistryKey()
+    {
+        return baseConfig().setRegistryKey("registry-key-0123456789abcdef0123456789");
     }
 }

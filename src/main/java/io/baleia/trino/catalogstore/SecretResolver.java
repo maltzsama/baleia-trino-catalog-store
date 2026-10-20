@@ -63,12 +63,14 @@ public class SecretResolver
 
     private final Database database;
     private final String secretFileBaseDir;
+    private final RegistryCipher registryCipher;
 
     @Inject
     public SecretResolver(Database database, BaleiaCatalogStoreConfig config)
     {
         this.database = database;
         this.secretFileBaseDir = config.getSecretFileBaseDir();
+        this.registryCipher = RegistryCipher.fromConfig(config);
     }
 
     /**
@@ -135,16 +137,44 @@ public class SecretResolver
                 }
                 out.put(key, resolved);
             }
+            else if (RegistryCipher.isEnvelope(value)) {
+                // Phase B (#31 / D4): Baleia seals catalog-origin secrets at rest.
+                String resolved = registryCipher.decrypt(key, value);
+                if (PLACEHOLDER.matcher(resolved).matches() || RegistryCipher.looksLikeEnvelope(resolved)) {
+                    throw new IllegalStateException(
+                            "Resolved secret for '" + key + "' is itself a placeholder; nested reference in a baleia-enc envelope");
+                }
+                out.put(key, resolved);
+            }
             else {
                 if (value.startsWith("@baleia-secret[")) {
                     throw new IllegalStateException(
                             "Property '" + key + "' value looks like a baleia-secret placeholder "
                                     + "but does not match the expected pattern: " + value);
                 }
+                if (RegistryCipher.looksLikeEnvelope(value)) {
+                    throw new IllegalStateException(
+                            "Property '" + key + "' value looks like a baleia-enc envelope "
+                                    + "but does not match the expected pattern: " + value);
+                }
                 out.put(key, value);
             }
         }
         return out;
+    }
+
+    /**
+     * Seals a value the plugin persists itself — a catalog's reference to its
+     * own row — when Phase B is enabled. Without a key the value stays plaintext
+     * (Phase A), so an existing deployment keeps working.
+     */
+    public String sealForStorage(String value)
+    {
+        if (!registryCipher.isEnabled() || value == null
+                || value.startsWith("@baleia-secret[") || RegistryCipher.looksLikeEnvelope(value)) {
+            return value;
+        }
+        return registryCipher.encrypt(value);
     }
 
     /**
