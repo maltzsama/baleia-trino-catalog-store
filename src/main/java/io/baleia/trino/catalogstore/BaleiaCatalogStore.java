@@ -171,13 +171,16 @@ public class BaleiaCatalogStore
      * That value lives in this very row, which the UPSERT replaces: persisting
      * the reference would leave the row pointing at itself, and the next boot
      * would skip the catalog as a circular reference. So the row keeps the value
-     * it already held (the resolved one). {@code env:}, {@code file:} and other
+     * it already held (the resolved one), sealed when Phase B is enabled
+     * ({@code baleia.registry-key} set). {@code env:}, {@code file:} and other
      * catalogs' references stay references.
      */
-    static Map<String, String> persistedProperties(String catalogName, Map<String, String> raw, Map<String, String> resolved)
+    Map<String, String> persistedProperties(String catalogName, Map<String, String> raw, Map<String, String> resolved)
     {
         ImmutableMap.Builder<String, String> out = ImmutableMap.builder();
-        raw.forEach((key, value) -> out.put(key, SecretResolver.refersToCatalog(catalogName, value) ? resolved.get(key) : value));
+        raw.forEach((key, value) -> out.put(key, SecretResolver.refersToCatalog(catalogName, value)
+                ? secretResolver.sealForStorage(resolved.get(key))
+                : value));
         return out.buildOrThrow();
     }
 

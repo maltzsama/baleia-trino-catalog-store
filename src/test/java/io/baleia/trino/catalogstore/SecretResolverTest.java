@@ -280,6 +280,50 @@ class SecretResolverTest
                 () -> resolver.resolve(Map.of("k", "@baleia-secret[file:../escape]")));
     }
 
+    // ── registry envelope (Phase B, #31 / D4) ───────────────────────────
+
+    @Test
+    void decryptsRegistryEnvelope()
+    {
+        // Same cross-language vector as RegistryCipherTest.
+        SecretResolver resolver = new SecretResolver(dbReturningEmpty(), configWithRegistryKey());
+        Map<String, String> out = resolver.resolve(Map.of(
+                "token", "@baleia-enc[v1:4df53e73:qcEdPseBZDnCyYYVfyso8WVSPE4BpE63epScMTBZYBTVqw]"));
+        assertEquals("s3cr3t", out.get("token"));
+    }
+
+    @Test
+    void registryEnvelopeFailsClosedWithoutAKey()
+    {
+        SecretResolver resolver = new SecretResolver(dbReturningEmpty(), baseConfig());
+        IllegalStateException e = assertThrows(IllegalStateException.class,
+                () -> resolver.resolve(Map.of(
+                        "token", "@baleia-enc[v1:4df53e73:qcEdPseBZDnCyYYVfyso8WVSPE4BpE63epScMTBZYBTVqw]")));
+        assertTrue(e.getMessage().contains("baleia.registry-key is not configured"));
+        assertFalse(e.getMessage().contains("s3cr3t"));
+    }
+
+    @Test
+    void rejectsMalformedRegistryEnvelope()
+    {
+        SecretResolver resolver = new SecretResolver(dbReturningEmpty(), configWithRegistryKey());
+        IllegalStateException e = assertThrows(IllegalStateException.class,
+                () -> resolver.resolve(Map.of("token", "@baleia-enc[v1:bad]")));
+        assertTrue(e.getMessage().contains("does not match the expected pattern"));
+    }
+
+    @Test
+    void sealForStorageEncryptsOnlyWhenEnabled()
+    {
+        SecretResolver plain = new SecretResolver(dbReturningEmpty(), baseConfig());
+        assertEquals("value", plain.sealForStorage("value"));
+
+        SecretResolver sealed = new SecretResolver(dbReturningEmpty(), configWithRegistryKey());
+        String envelope = sealed.sealForStorage("value");
+        assertTrue(envelope.startsWith("@baleia-enc[v1:"));
+        assertEquals("value", sealed.resolve(Map.of("k", envelope)).get("k"));
+    }
+
     // ── helpers ─────────────────────────────────────────────────────────
 
     private static Database dbReturningEmpty()
@@ -309,6 +353,11 @@ class SecretResolverTest
                 .setJdbcUrl("jdbc:postgresql://localhost:5432/_unused")
                 .setUsername("u")
                 .setPassword("p");
+    }
+
+    private static BaleiaCatalogStoreConfig configWithRegistryKey()
+    {
+        return baseConfig().setRegistryKey("registry-key-0123456789abcdef0123456789");
     }
 
     private BaleiaCatalogStoreConfig configWithBaseDir(Path dir)
