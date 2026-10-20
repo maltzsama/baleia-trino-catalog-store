@@ -42,6 +42,28 @@ class BaleiaCatalogStoreConfigTest
         assertEquals(2000, cfg.getInitialBackoff().toMillis());
         assertEquals(30000, cfg.getMaxBackoff().toMillis());
         assertEquals("", cfg.getSecretFileBaseDir());
+        assertEquals("", cfg.getRegistryKey());
+        assertEquals("", cfg.getRegistryKeyPrevious());
+    }
+
+    @Test
+    void registryKeyValidation()
+    {
+        assertTrue(validator.validate(baseConfig()).isEmpty(), "no registry key is valid (Phase A)");
+        assertTrue(validator.validate(baseConfig().setRegistryKey("k".repeat(32))).isEmpty(),
+                "a 32-char registry key is valid");
+        assertFalse(validator.validate(baseConfig().setRegistryKey("short")).isEmpty(),
+                "a short registry key must fail validation");
+        assertFalse(validator.validate(baseConfig().setRegistryKeyPrevious("k".repeat(32))).isEmpty(),
+                "a previous key without a current key must fail validation");
+        assertFalse(validator.validate(baseConfig()
+                .setRegistryKey("k".repeat(32))
+                .setRegistryKeyPrevious("short")).isEmpty(),
+                "a short previous key must fail validation");
+        assertTrue(validator.validate(baseConfig()
+                .setRegistryKey("k".repeat(32))
+                .setRegistryKeyPrevious("p".repeat(32))).isEmpty(),
+                "current + previous keys are valid (rotation)");
     }
 
     @Test

@@ -35,6 +35,8 @@ public class BaleiaCatalogStoreConfig
     private Duration initialBackoff = new Duration(2, SECONDS);
     private Duration maxBackoff = new Duration(30, SECONDS);
     private String secretFileBaseDir = "";
+    private String registryKey = "";
+    private String registryKeyPrevious = "";
 
     @NotNull
     public String getJdbcUrl()
@@ -179,5 +181,47 @@ public class BaleiaCatalogStoreConfig
                 && initialBackoff.toMillis() > 0
                 && maxBackoff.toMillis() > 0
                 && initialBackoff.toMillis() <= maxBackoff.toMillis();
+    }
+
+    public String getRegistryKey()
+    {
+        return registryKey;
+    }
+
+    @Config("baleia.registry-key")
+    @ConfigSecuritySensitive
+    @ConfigDescription("Dedicated key that decrypts @baleia-enc[...] registry values (Phase B). Empty keeps plaintext.")
+    public BaleiaCatalogStoreConfig setRegistryKey(String registryKey)
+    {
+        this.registryKey = registryKey;
+        return this;
+    }
+
+    public String getRegistryKeyPrevious()
+    {
+        return registryKeyPrevious;
+    }
+
+    @Config("baleia.registry-key-previous")
+    @ConfigSecuritySensitive
+    @ConfigDescription("Previous registry key, accepted during a rotation. Requires baleia.registry-key.")
+    public BaleiaCatalogStoreConfig setRegistryKeyPrevious(String registryKeyPrevious)
+    {
+        this.registryKeyPrevious = registryKeyPrevious;
+        return this;
+    }
+
+    @AssertTrue(message = "baleia.registry-key-previous requires baleia.registry-key, and a configured key must be at least 32 characters")
+    public boolean isRegistryKeyConfigurationValid()
+    {
+        boolean noCurrent = registryKey == null || registryKey.isEmpty();
+        boolean noPrevious = registryKeyPrevious == null || registryKeyPrevious.isEmpty();
+        if (noCurrent) {
+            return noPrevious;
+        }
+        if (registryKey.length() < 32) {
+            return false;
+        }
+        return noPrevious || registryKeyPrevious.length() >= 32;
     }
 }
