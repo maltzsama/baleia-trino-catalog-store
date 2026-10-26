@@ -5,6 +5,26 @@
 
 * **store:** evict pending catalog properties left by a failed CREATE ([#31](https://github.com/maltzsama/baleia-trino-catalog-store/issues/31)) ([9041b9b](https://github.com/maltzsama/baleia-trino-catalog-store/commit/9041b9b0e1a520716329b3955d25b4ff1db90d3b))
 
+## [0.10.0](https://github.com/maltzsama/baleia-trino-catalog-store/compare/v0.9.2...v0.10.0) (2026-10-26)
+
+
+### Features
+
+* **config:** add the Phase B registry key ([#200](https://github.com/maltzsama/baleia-trino-catalog-store/issues/200)) ([1a416a8](https://github.com/maltzsama/baleia-trino-catalog-store/commit/1a416a80d46c87b07f067f515577013b1b67e4df))
+* decrypt [@baleia-enc](https://github.com/baleia-enc) registry values (Phase B of baleia[#200](https://github.com/maltzsama/baleia-trino-catalog-store/issues/200)) ([d0d2ea8](https://github.com/maltzsama/baleia-trino-catalog-store/commit/d0d2ea8d625d5cfe366cdad6fe38130f1a479411))
+* **secret:** decrypt [@baleia-enc](https://github.com/baleia-enc) registry envelopes ([#200](https://github.com/maltzsama/baleia-trino-catalog-store/issues/200)) ([0bc1faf](https://github.com/maltzsama/baleia-trino-catalog-store/commit/0bc1fafd1a2b56b81654d63ed245982ee6f06184))
+* **trino:** support Trino 484 alongside 483 ([eb9f6d2](https://github.com/maltzsama/baleia-trino-catalog-store/commit/eb9f6d2169aa6e0404061fc5f6dc8d8ace3b4262))
+
+
+### Bug Fixes
+
+* **release:** repair the changelog and retry release-please on transient errors ([6f240b4](https://github.com/maltzsama/baleia-trino-catalog-store/commit/6f240b4127488fbf7d4b3d6e10bd5ce9936c17c4))
+
+
+### Documentation
+
+* document Phase B registry encryption ([#200](https://github.com/maltzsama/baleia-trino-catalog-store/issues/200)) ([dfcd518](https://github.com/maltzsama/baleia-trino-catalog-store/commit/dfcd518de2e0a0eeb403d6398cb2355bd58ab483))
+
 ## [0.9.1](https://github.com/maltzsama/baleia-trino-catalog-store/compare/v0.9.0...v0.9.1) (2026-10-15)
 
 
