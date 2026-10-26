@@ -29,10 +29,12 @@ Polaris, Iceberg, REST catalog lives in the backend; this plugin only transports
 
 | Trino | Compiles | Acceptance | Notes |
 |-------|----------|------------|-------|
-| 483   | yes      | yes        | the version the artifact is built against |
+| 483   | yes      | yes        | legacy artifact still shipped for Baleia |
+| 484   | yes      | yes        | default build |
 
-Trino 482 is no longer supported (#79). Each release ships a single
-`baleia-catalog-store-<version>+trino483.tar.gz`. See
+Trino 482 is no longer supported (#79). Each release ships one
+`baleia-catalog-store-<version>+trino<version>.tar.gz` per supported version
+(currently `+trino483` and `+trino484`). See
 [`docs/spi-compat.md`](docs/spi-compat.md) for the SPI surface, N5 verification,
 and upgrade procedure.
 

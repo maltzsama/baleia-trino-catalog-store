@@ -1,17 +1,22 @@
 # SPI Compatibility
 
-This plugin compiles against the supported Trino version and runs on it. Each
-release publishes one artifact per supported version (currently one).
+This plugin compiles against the supported Trino versions and runs on them. Each
+release publishes one artifact per supported version (currently two).
 
 ## Supported versions
 
 | Trino | Compiles | Acceptance | Artifact | Status |
 |-------|----------|------------|----------|--------|
-| 483   | yes      | yes        | `+trino483` | supported |
+| 483   | yes      | yes        | `+trino483` | supported — legacy artifact Baleia pins |
+| 484   | yes      | yes        | `+trino484` | supported — default build |
 
 Trino 482 is no longer supported (#79): the last release with a `+trino482`
 artifact is the one before that change. The SPI surface the plugin uses is
 identical in 482 and 483, so the code did not need to change.
+
+Trino 484 adds `checkCanSetMaterializedViewComment` to `SystemAccessControl`.
+The guard implements it (without `@Override`, so the same source still compiles
+against 483) and requires a writable session, like every other comment check.
 
 **Policy:** a version leaves this table in the same release that drops it from CI,
 the release tarballs and `docker/`.

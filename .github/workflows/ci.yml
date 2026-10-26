@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        trino: [ "483" ]
+        trino: [ "483", "484" ]
 
     steps:
     - uses: actions/checkout@v7
@@ -50,7 +50,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        trino: [ "483" ]
+        trino: [ "483", "484" ]
 
     steps:
     - uses: actions/checkout@v7
