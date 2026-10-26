@@ -261,6 +261,11 @@ every release (`bump-minor-pre-major: false`, so `feat` bumps the minor).
 Do not hand-edit it except for a deliberate one-off repair; after a repair,
 check that the next Release PR still shows the new version at the top.
 
+**Keep the `# Changelog` header as the first line.** Release Please looks for
+the first `##` version heading *preceded by a newline*; without that header the
+first heading is at offset 0 and is skipped, so the new version lands after the
+first release instead of on top (that is how this file was corrupted before).
+
 ## Docker Compose
 
 The `docker/` directory runs PostgreSQL 18 + Trino 483, mounting the plugin
