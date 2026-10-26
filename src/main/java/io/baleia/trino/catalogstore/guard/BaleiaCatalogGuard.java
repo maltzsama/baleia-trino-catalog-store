@@ -324,6 +324,13 @@ public class BaleiaCatalogGuard
         requireWritable(context, "set materialized view properties");
     }
 
+    // SPI 484 added this check. It has no counterpart in 483, so it carries no
+    // @Override: the 483 artifact is built from this same source (release matrix).
+    public void checkCanSetMaterializedViewComment(SystemSecurityContext context, CatalogSchemaTableName view)
+    {
+        requireWritable(context, "set materialized view comment");
+    }
+
     @Override
     public void checkCanSetMaterializedViewAuthorization(SystemSecurityContext context, CatalogSchemaTableName view, TrinoPrincipal principal)
     {

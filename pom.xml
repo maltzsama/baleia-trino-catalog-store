@@ -18,8 +18,9 @@
         <maven.compiler.target>25</maven.compiler.target>
         <java.release>25</java.release>
 
-        <!-- PHASE 0 (tag 483): same versions as Trino's pom.xml -->
-        <trino.version>483</trino.version>
+        <!-- Default SPI. The 483 artifact is built from this same source by the
+             CI and release matrices (-Dtrino.version=483). -->
+        <trino.version>484</trino.version>
         <airlift.version>453</airlift.version>
 
         <guice.version>7.0.0</guice.version>
