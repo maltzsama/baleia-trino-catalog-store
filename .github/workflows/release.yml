@@ -29,11 +29,21 @@ jobs:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     outputs:
-      release_created: ${{ steps.release.outputs.release_created }}
-      tag_name: ${{ steps.release.outputs.tag_name }}
+      # A transient GitHub API error (e.g. a GraphQL 500) must not cost a whole
+      # release cycle: the second step retries once and these outputs follow
+      # whichever attempt succeeded.
+      release_created: ${{ steps.release.outputs.release_created || steps.release_retry.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name || steps.release_retry.outputs.tag_name }}
     steps:
     - uses: googleapis/release-please-action@v5
       id: release
+      continue-on-error: true
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - uses: googleapis/release-please-action@v5
+      id: release_retry
+      if: steps.release.outcome == 'failure'
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
 

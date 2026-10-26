@@ -231,6 +231,16 @@ On every push to `main`, it:
 * Everything else (`build`, `chore`, `docs`, `ci`, `test`, `refactor`,
   `perf`, `style`) — no new release.
 
+**The PR title is the changelog entry.** This repository merges with a merge
+commit (never squash). Release Please reads the merge commit and takes the
+entry from the **PR title**, so:
+
+* put the Conventional Commit message in the **PR title** (`fix(store): ...`);
+* keep the commits inside the branch **plain** (e.g. `evict pending
+  properties`). A branch commit that also starts with `fix(scope):` is counted
+  twice — once as a commit, once through the merge commit's PR title — and
+  duplicates the changelog line.
+
 ### How it works
 
 ```
@@ -244,8 +254,10 @@ push to main → Release Please opens/updates Release PR
 The Release PR is a normal PR — you can review the CHANGELOG entries and the
 version bump before merging. No `npm`, no Node.js, no `.releaserc.json`.
 
-**Do not edit `CHANGELOG.md` by hand** — Release Please regenerates it on
-every release.
+Release Please owns `CHANGELOG.md`: it inserts each new version at the top on
+every release (`bump-minor-pre-major: false`, so `feat` bumps the minor).
+Do not hand-edit it except for a deliberate one-off repair; after a repair,
+check that the next Release PR still shows the new version at the top.
 
 ## Docker Compose
 
