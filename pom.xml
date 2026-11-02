@@ -21,7 +21,7 @@
         <!-- Default SPI. The 483 artifact is built from this same source by the
              CI and release matrices (-Dtrino.version=483). -->
         <trino.version>484</trino.version>
-        <airlift.version>453</airlift.version>
+        <airlift.version>455</airlift.version>
 
         <guice.version>7.0.0</guice.version>
         <guava.version>33.7.2-jre</guava.version>
