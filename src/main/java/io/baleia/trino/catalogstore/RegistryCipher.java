@@ -153,6 +153,12 @@ public class RegistryCipher
             throw new IllegalStateException("baleia.registry-key is not configured");
         }
         SecretKeySpec key = keys.get(currentKeyId);
+        if (key == null) {
+            // Unreachable through fromConfig(), which always registers the current
+            // key, but fail with a clear message instead of an NPE if that invariant
+            // ever breaks.
+            throw new IllegalStateException("no registry key registered for the current key id");
+        }
         byte[] nonce = new byte[NONCE_LEN];
         random.nextBytes(nonce);
         try {

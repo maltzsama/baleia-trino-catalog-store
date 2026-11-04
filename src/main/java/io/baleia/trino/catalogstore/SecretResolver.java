@@ -135,6 +135,18 @@ public class SecretResolver
                             "Resolved secret for '" + key + "' is itself a baleia-secret placeholder; "
                                     + "circular reference at " + origin + ":" + identifier);
                 }
+                // Phase B: when the value came from another catalog's row it may be
+                // sealed at rest, because Baleia stores catalog-origin secrets as
+                // @baleia-enc[...] envelopes. Decrypt it here so a cross-catalog
+                // reference never hands a ciphertext envelope to the connector.
+                if (RegistryCipher.isEnvelope(resolved)) {
+                    resolved = registryCipher.decrypt(key, resolved);
+                    if (PLACEHOLDER.matcher(resolved).matches() || RegistryCipher.looksLikeEnvelope(resolved)) {
+                        throw new IllegalStateException(
+                                "Resolved secret for '" + key + "' is itself a placeholder; "
+                                        + "nested reference in a baleia-enc envelope at " + origin + ":" + identifier);
+                    }
+                }
                 out.put(key, resolved);
             }
             else if (RegistryCipher.isEnvelope(value)) {
@@ -180,11 +192,16 @@ public class SecretResolver
     /**
      * Resolves a {@code @baleia-secret[catalog:key]} reference from the database.
      *
+     * <p>This is a single hop: the referenced value is returned verbatim and is
+     * <b>not</b> resolved recursively. A value that is itself a placeholder is
+     * rejected as a circular reference by the caller; a value that is a
+     * {@code @baleia-enc[...]} envelope is decrypted by the caller (Phase B).
+     *
      * @param key       the property key (for error messages)
      * @param catalog   the source catalog name
      * @param secretKey the key within the catalog's properties
      * @param memo      per-call memoization cache for catalog properties
-     * @return the resolved value
+     * @return the referenced value, possibly still sealed
      */
     private String resolveCatalog(String key, String catalog, String secretKey,
             Map<String, Optional<Map<String, String>>> memo)
