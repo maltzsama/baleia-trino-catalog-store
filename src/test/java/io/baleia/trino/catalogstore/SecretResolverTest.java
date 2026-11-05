@@ -293,6 +293,34 @@ class SecretResolverTest
     }
 
     @Test
+    void decryptsSealedValueReachedThroughCatalogReference()
+    {
+        // A catalog references another catalog's secret. In Phase B the source row
+        // is sealed at rest, so resolution must decrypt the envelope instead of
+        // handing the ciphertext to the connector.
+        SecretResolver resolver = new SecretResolver(
+                dbReturning(Map.of("token",
+                        "@baleia-enc[v1:4df53e73:qcEdPseBZDnCyYYVfyso8WVSPE4BpE63epScMTBZYBTVqw]")),
+                configWithRegistryKey());
+        Map<String, String> out = resolver.resolve(Map.of(
+                "token", "@baleia-secret[vault:token]"));
+        assertEquals("s3cr3t", out.get("token"));
+    }
+
+    @Test
+    void sealedValueReachedThroughCatalogReferenceFailsClosedWithoutKey()
+    {
+        SecretResolver resolver = new SecretResolver(
+                dbReturning(Map.of("token",
+                        "@baleia-enc[v1:4df53e73:qcEdPseBZDnCyYYVfyso8WVSPE4BpE63epScMTBZYBTVqw]")),
+                baseConfig());
+        IllegalStateException e = assertThrows(IllegalStateException.class,
+                () -> resolver.resolve(Map.of("token", "@baleia-secret[vault:token]")));
+        assertTrue(e.getMessage().contains("baleia.registry-key is not configured"));
+        assertFalse(e.getMessage().contains("s3cr3t"));
+    }
+
+    @Test
     void registryEnvelopeFailsClosedWithoutAKey()
     {
         SecretResolver resolver = new SecretResolver(dbReturningEmpty(), baseConfig());

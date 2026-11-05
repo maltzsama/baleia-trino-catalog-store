@@ -45,7 +45,8 @@ public class BaleiaCatalogStoreFactory
                 version = props.getProperty("compiled.trino.version", "unknown");
             }
         }
-        catch (IOException ignored) {
+        catch (IOException e) {
+            log.debug(e, "Could not read version.properties; compiled Trino version will be 'unknown'");
         }
         COMPILED_TRINO_VERSION = version;
     }
