@@ -15,6 +15,8 @@ import java.lang.reflect.Method;
 import java.security.Principal;
 import java.time.Instant;
 import java.util.Arrays;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.TreeSet;
 import java.util.Map;
@@ -23,17 +25,23 @@ import org.junit.jupiter.api.function.Executable;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class BaleiaCatalogGuardTest
 {
     private static final String ADMIN = "baleia_admin";
+    private static final String SERVICE = "baleia";
     private static final String USER = "u_123e4567-e89b-12d3-a456-426614174000";
+    private static final String OTHER = "u_00000000-0000-0000-0000-000000000000";
 
     private static final BaleiaCatalogGuard guard = new BaleiaCatalogGuard(Set.of(ADMIN));
+    private static final BaleiaCatalogGuard guardWithService =
+            new BaleiaCatalogGuard(Set.of(ADMIN), Set.of(SERVICE), false);
 
-    // Checks the guard does not decide: it only allows them (see the guard's comment).
+    // Non-write checks the guard does not deny in read-only mode: reads pass through,
+    // and query visibility / admin / impersonation are decided by their own rules.
     private static final Set<String> PASS_THROUGH_CHECKS = Set.of(
             "checkCanExecuteQuery", "checkCanViewQueryOwnedBy", "checkCanKillQueryOwnedBy",
             "checkCanReadSystemInformation", "checkCanShowSchemas", "checkCanShowCreateSchema",
@@ -48,6 +56,11 @@ public class BaleiaCatalogGuardTest
                 .withExtraCredentials(extraCredentials)
                 .build();
         return new SystemSecurityContext(identity, new QueryId("20240101_000000_00000_abcde"), Instant.now());
+    }
+
+    private static SystemSecurityContext scoped(String user, String... catalogs)
+    {
+        return context(user, Map.of(BaleiaCatalogGuard.SCOPE_CREDENTIAL, String.join(",", catalogs)));
     }
 
     private static final CatalogSchemaTableName TABLE =
@@ -107,9 +120,10 @@ public class BaleiaCatalogGuardTest
     @Test
     public void readonlyAllowsReads()
     {
-        SystemSecurityContext ro = context(USER, Map.of(BaleiaCatalogGuard.READ_ONLY_CREDENTIAL, "readonly"));
-        // Read-only sessions still see the catalog namespace (SPI pass-through
-        // filters); the guard only removes write abilities.
+        SystemSecurityContext ro = context(USER, Map.of(
+                BaleiaCatalogGuard.READ_ONLY_CREDENTIAL, "readonly",
+                BaleiaCatalogGuard.SCOPE_CREDENTIAL, "tpch"));
+        // Read-only sessions still see their scope's catalogs (the guard only removes writes).
         assertEquals(Set.of("tpch"), guard.filterCatalogs(ro, Set.of("tpch")));
         assertEquals(Set.of("sf1"), guard.filterSchemas(ro, "tpch", Set.of("sf1")));
         assertEquals(Set.of(new SchemaTableName("sf1", "lineitem")),
@@ -183,8 +197,10 @@ public class BaleiaCatalogGuardTest
     @Test
     public void allowsEverythingItDoesNotDecide()
     {
-        SystemSecurityContext user = context(USER, Map.of());
-        SystemSecurityContext readonly = context(USER, Map.of("baleia.mode", "readonly"));
+        SystemSecurityContext user = scoped(USER, "tpch");
+        SystemSecurityContext readonly = context(USER, Map.of(
+                BaleiaCatalogGuard.READ_ONLY_CREDENTIAL, "readonly",
+                BaleiaCatalogGuard.SCOPE_CREDENTIAL, "tpch"));
         for (SystemSecurityContext ctx : new SystemSecurityContext[] {user, readonly}) {
             assertDoesNotThrow(() -> guard.checkCanExecuteQuery(ctx.getIdentity(), ctx.getQueryId()));
             assertDoesNotThrow(() -> guard.checkCanViewQueryOwnedBy(ctx.getIdentity(), ctx.getIdentity()));
@@ -195,8 +211,73 @@ public class BaleiaCatalogGuardTest
             assertDoesNotThrow(() -> guard.checkCanSelectFromColumns(ctx, TABLE, Set.of("a")));
             assertDoesNotThrow(() -> guard.checkCanSelectFromColumns(ctx, TABLE, Optional.empty(), Set.of("a")));
             assertTrue(guard.canAccessCatalog(ctx, "tpch"));
-            assertEquals(Set.of("tpch", "sf1"), guard.filterCatalogs(ctx, Set.of("tpch", "sf1")));
+            assertEquals(Set.of("tpch"), guard.filterCatalogs(ctx, Set.of("tpch", "sf1")));
         }
+    }
+
+    @Test
+    public void scopeGatesUserCatalogs()
+    {
+        SystemSecurityContext user = scoped(USER, "tpch", "sales");
+        assertTrue(guard.canAccessCatalog(user, "tpch"));
+        assertTrue(guard.canAccessCatalog(user, "sales"));
+        assertFalse(guard.canAccessCatalog(user, "lake"));
+        assertEquals(Set.of("tpch", "sales"), guard.filterCatalogs(user, Set.of("tpch", "sales", "lake")));
+    }
+
+    @Test
+    public void noScopeDeniesUserCatalogs()
+    {
+        SystemSecurityContext user = context(USER, Map.of());
+        assertFalse(guard.canAccessCatalog(user, "tpch"));
+        assertEquals(Set.of(), guard.filterCatalogs(user, Set.of("tpch", "sales")));
+    }
+
+    @Test
+    public void trustedIdentitiesSeeEveryCatalog()
+    {
+        SystemSecurityContext admin = context(ADMIN, Map.of());
+        assertTrue(guard.canAccessCatalog(admin, "tpch"));
+        assertEquals(Set.of("tpch", "sales"), guard.filterCatalogs(admin, Set.of("tpch", "sales")));
+
+        SystemSecurityContext service = context(SERVICE, Map.of());
+        assertTrue(guardWithService.canAccessCatalog(service, "tpch"));
+        assertEquals(Set.of("tpch", "sales"), guardWithService.filterCatalogs(service, Set.of("tpch", "sales")));
+    }
+
+    @Test
+    public void userSeesAndKillsOnlyOwnQueries()
+    {
+        Identity user = Identity.forUser(USER).build();
+        Identity other = Identity.forUser(OTHER).build();
+        assertDoesNotThrow(() -> guard.checkCanViewQueryOwnedBy(user, user));
+        assertThrows(AccessDeniedException.class, () -> guard.checkCanViewQueryOwnedBy(user, other));
+        assertDoesNotThrow(() -> guard.checkCanKillQueryOwnedBy(user, user));
+        assertThrows(AccessDeniedException.class, () -> guard.checkCanKillQueryOwnedBy(user, other));
+
+        Collection<Identity> visible = guard.filterViewQueryOwnedBy(user, List.of(user, other));
+        assertEquals(1, visible.size());
+        assertEquals(USER, visible.iterator().next().getUser());
+
+        Identity admin = Identity.forUser(ADMIN).build();
+        assertDoesNotThrow(() -> guard.checkCanViewQueryOwnedBy(admin, other));
+        assertEquals(2, guard.filterViewQueryOwnedBy(admin, List.of(user, other)).size());
+    }
+
+    @Test
+    public void deniesImpersonatingServiceIdentity()
+    {
+        assertThrows(AccessDeniedException.class,
+                () -> guardWithService.checkCanImpersonateUser(Identity.forUser(USER).build(), SERVICE));
+        assertDoesNotThrow(() -> guardWithService.checkCanImpersonateUser(Identity.forUser(ADMIN).build(), SERVICE));
+    }
+
+    @Test
+    public void setUserProtectsServiceIdentity()
+    {
+        assertThrows(AccessDeniedException.class,
+                () -> guardWithService.checkCanSetUser(Optional.of(principal(USER)), SERVICE));
+        assertDoesNotThrow(() -> guardWithService.checkCanSetUser(Optional.of(principal(ADMIN)), SERVICE));
     }
 
     private static Principal principal(String name)

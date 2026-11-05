@@ -17,10 +17,12 @@ import io.trino.spi.security.SystemSecurityContext;
 import io.trino.spi.security.TrinoPrincipal;
 
 import java.security.Principal;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Baleia's catalog guard.
@@ -29,15 +31,21 @@ import java.util.Set;
  * {@code access-control.config-files} (a comma-separated list), so it <em>stacks</em>
  * with file-based or Polaris guards instead of replacing them.</p>
  *
- * <p>It enforces two rules that the SQL editor cannot prove on its own:</p>
+ * <p>It enforces three rules that the SQL editor cannot prove on its own:</p>
  * <ol>
  *   <li><b>Catalog management is admin-only.</b> {@code CREATE/DROP CATALOG} is
- *       accepted only for {@code baleia.admin-users} identities, and admin users
- *       cannot be impersonated by non-admins (which is what {@code SET SESSION
+ *       accepted only for {@code baleia.admin-users} identities, and trusted
+ *       users cannot be impersonated by non-trusted ones (which is what {@code SET SESSION
  *       AUTHORIZATION} would otherwise allow).</li>
  *   <li><b>Read-only mode.</b> A session whose identity carries the extra
  *       credential {@code baleia.mode=readonly} is denied every write/DDL check.
  *       See the SPI inventory in {@code docs/spi-483.md}.</li>
+ *   <li><b>Workspace catalog scope.</b> A non-trusted identity may access only the
+ *       catalogs in its {@code baleia.catalogs} extra credential (a comma-separated
+ *       list). Trusted identities — {@code baleia.admin-users} plus
+ *       {@code baleia.service-users} — see every catalog, and only they may view or
+ *       kill other users' queries. A non-trusted identity without the credential
+ *       reaches no catalog.</li>
  * </ol>
  */
 public class BaleiaCatalogGuard
@@ -45,28 +53,45 @@ public class BaleiaCatalogGuard
 {
     public static final String READ_ONLY_CREDENTIAL = "baleia.mode";
     public static final String READ_ONLY_VALUE = "readonly";
+    public static final String SCOPE_CREDENTIAL = "baleia.catalogs";
 
     // Session properties Baleia itself sets; allowed even in read-only sessions.
     private static final Set<String> BALEIA_SESSION_PROPERTIES =
             ImmutableSet.of("query_max_execution_time", "query_max_run_time");
 
     private final Set<String> adminUsers;
+    private final Set<String> serviceUsers;
+    private final Set<String> trustedUsers;
     private final boolean allowUnauthenticatedAdmin;
 
     public BaleiaCatalogGuard(Set<String> adminUsers)
     {
-        this(adminUsers, false);
+        this(adminUsers, Set.of(), false);
+    }
+
+    public BaleiaCatalogGuard(Set<String> adminUsers, boolean allowUnauthenticatedAdmin)
+    {
+        this(adminUsers, Set.of(), allowUnauthenticatedAdmin);
     }
 
     /**
+     * @param adminUsers identities allowed to manage catalogs, impersonate any user and
+     *        read/write every catalog.
+     * @param serviceUsers identities Baleia uses for its own jobs (metadata sync,
+     *        maintenance); trusted for access and query visibility, but not for catalog DDL.
      * @param allowUnauthenticatedAdmin when true, a connection with no authenticated
      *        principal (a coordinator without authentication, reachable only on a private
-     *        network) may claim an admin user. A connection that does have an authenticated
-     *        principal must still be an admin to land in an admin user.
+     *        network) may claim a trusted user. A connection that does have an authenticated
+     *        principal must still be trusted to land in a trusted user.
      */
-    public BaleiaCatalogGuard(Set<String> adminUsers, boolean allowUnauthenticatedAdmin)
+    public BaleiaCatalogGuard(Set<String> adminUsers, Set<String> serviceUsers, boolean allowUnauthenticatedAdmin)
     {
         this.adminUsers = ImmutableSet.copyOf(adminUsers);
+        this.serviceUsers = ImmutableSet.copyOf(serviceUsers);
+        this.trustedUsers = ImmutableSet.<String>builder()
+                .addAll(adminUsers)
+                .addAll(serviceUsers)
+                .build();
         this.allowUnauthenticatedAdmin = allowUnauthenticatedAdmin;
     }
 
@@ -84,11 +109,11 @@ public class BaleiaCatalogGuard
         requireAdmin(context, "drop catalog");
     }
 
-    // SET SESSION AUTHORIZATION and impersonation must not reach admin targets.
+    // SET SESSION AUTHORIZATION and impersonation must not reach trusted targets.
     @Override
     public void checkCanImpersonateUser(Identity identity, String userName)
     {
-        if (adminUsers.contains(userName) && !adminUsers.contains(identity.getUser())) {
+        if (trustedUsers.contains(userName) && !trustedUsers.contains(identity.getUser())) {
             AccessDeniedException.denyImpersonateUser(identity.getUser(), userName);
         }
     }
@@ -96,19 +121,19 @@ public class BaleiaCatalogGuard
     @Override
     public void checkCanSetUser(Optional<Principal> principal, String userName)
     {
-        if (!adminUsers.contains(userName)) {
+        if (!trustedUsers.contains(userName)) {
             return;
         }
         if (principal.isPresent()) {
-            // An authenticated principal may land in an admin user only if it is one.
-            if (!adminUsers.contains(principal.get().getName())) {
-                throw new AccessDeniedException("only Baleia admin users may connect as an admin user");
+            // An authenticated principal may land in a trusted user only if it is one.
+            if (!trustedUsers.contains(principal.get().getName())) {
+                throw new AccessDeniedException("only Baleia trusted users may connect as a trusted user");
             }
             return;
         }
         // No authentication on this coordinator: identity is whatever the client sent.
         if (!allowUnauthenticatedAdmin) {
-            throw new AccessDeniedException("only Baleia admin users may connect as an admin user");
+            throw new AccessDeniedException("only Baleia trusted users may connect as a trusted user");
         }
     }
 
@@ -505,14 +530,15 @@ public class BaleiaCatalogGuard
 
     // ── helpers ────────────────────────────────────────────────────────────────
 
-    // ── checks the guard does not decide: always allowed ───────────────────────
+    // ── checks the guard allows unless it decides otherwise ────────────────────
     //
     // Trino denies, by default, every SystemAccessControl check an implementation
-    // does not override. The guard decides catalog management, impersonation and
-    // read-only sessions only; everything below is allowed here and left to the other
-    // access-control files in access-control.config-files. Without these overrides an
-    // active guard denies the whole cluster (even SELECT 1). BaleiaCatalogGuardTest
-    // fails if the SPI gains a check the guard does not override.
+    // does not override. The guard decides catalog management, impersonation,
+    // read-only sessions, catalog scope and query visibility; everything else is
+    // allowed here and left to the other access-control files in
+    // access-control.config-files. Without these overrides an active guard denies
+    // the whole cluster (even SELECT 1). BaleiaCatalogGuardTest fails if the SPI
+    // gains a check the guard does not override.
 
     @Override
     public void checkCanExecuteQuery(Identity identity, QueryId queryId)
@@ -522,11 +548,17 @@ public class BaleiaCatalogGuard
     @Override
     public void checkCanViewQueryOwnedBy(Identity identity, Identity queryOwner)
     {
+        if (!isTrusted(identity) && !identity.getUser().equals(queryOwner.getUser())) {
+            throw new AccessDeniedException("cannot view a query owned by another user");
+        }
     }
 
     @Override
     public void checkCanKillQueryOwnedBy(Identity identity, Identity queryOwner)
     {
+        if (!isTrusted(identity) && !identity.getUser().equals(queryOwner.getUser())) {
+            throw new AccessDeniedException("cannot kill a query owned by another user");
+        }
     }
 
     @Override
@@ -607,7 +639,10 @@ public class BaleiaCatalogGuard
     @Override
     public boolean canAccessCatalog(SystemSecurityContext context, String catalogName)
     {
-        return true;
+        if (isTrusted(context.getIdentity())) {
+            return true;
+        }
+        return allowedCatalogs(context.getIdentity()).contains(catalogName);
     }
 
     @Override
@@ -625,7 +660,11 @@ public class BaleiaCatalogGuard
     @Override
     public Set<String> filterCatalogs(SystemSecurityContext context, Set<String> catalogs)
     {
-        return catalogs;
+        if (isTrusted(context.getIdentity())) {
+            return catalogs;
+        }
+        Set<String> allowed = allowedCatalogs(context.getIdentity());
+        return catalogs.stream().filter(allowed::contains).collect(Collectors.toUnmodifiableSet());
     }
 
     @Override
@@ -661,7 +700,12 @@ public class BaleiaCatalogGuard
     @Override
     public Collection<Identity> filterViewQueryOwnedBy(Identity identity, Collection<Identity> queryOwners)
     {
-        return queryOwners;
+        if (isTrusted(identity)) {
+            return queryOwners;
+        }
+        return queryOwners.stream()
+                .filter(owner -> identity.getUser().equals(owner.getUser()))
+                .collect(Collectors.toUnmodifiableList());
     }
 
     private void requireAdmin(SystemSecurityContext context, String operation)
@@ -681,5 +725,22 @@ public class BaleiaCatalogGuard
     private static boolean isReadOnly(Identity identity)
     {
         return READ_ONLY_VALUE.equalsIgnoreCase(identity.getExtraCredentials().get(READ_ONLY_CREDENTIAL));
+    }
+
+    private boolean isTrusted(Identity identity)
+    {
+        return trustedUsers.contains(identity.getUser());
+    }
+
+    private Set<String> allowedCatalogs(Identity identity)
+    {
+        String raw = identity.getExtraCredentials().get(SCOPE_CREDENTIAL);
+        if (raw == null || raw.isBlank()) {
+            return Set.of();
+        }
+        return Arrays.stream(raw.split(","))
+                .map(String::trim)
+                .filter(name -> !name.isEmpty())
+                .collect(Collectors.toUnmodifiableSet());
     }
 }
