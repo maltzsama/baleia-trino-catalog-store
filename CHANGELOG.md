@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.10.1](https://github.com/maltzsama/baleia-trino-catalog-store/compare/v0.10.0...v0.10.1) (2026-11-05)
+
+
+### Bug Fixes
+
+* decrypt sealed values reached through cross-catalog references ([75d8201](https://github.com/maltzsama/baleia-trino-catalog-store/commit/75d82014e778d5d2156dee4c44297a9614fabbac))
+* decrypt sealed values reached through cross-catalog references ([d576635](https://github.com/maltzsama/baleia-trino-catalog-store/commit/d576635d783fc135d9767834d1ebeba63611d7b0))
+
 ## [0.10.0](https://github.com/maltzsama/baleia-trino-catalog-store/compare/v0.9.2...v0.10.0) (2026-10-26)
 
 
