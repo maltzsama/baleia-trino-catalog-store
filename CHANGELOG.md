@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.10.2](https://github.com/maltzsama/baleia-trino-catalog-store/compare/v0.10.1...v0.10.2) (2026-11-05)
+
+
+### Bug Fixes
+
+* **guard:** enforce the per-workspace catalog scope ([863ae0d](https://github.com/maltzsama/baleia-trino-catalog-store/commit/863ae0d4cefc993ae5226952fd8ec2bac903cfe6))
+* **guard:** enforce the per-workspace catalog scope ([41d2144](https://github.com/maltzsama/baleia-trino-catalog-store/commit/41d2144ecb4b789c80261d8309631adf256a729f))
+
 ## [0.10.1](https://github.com/maltzsama/baleia-trino-catalog-store/compare/v0.10.0...v0.10.1) (2026-11-05)
 
 
