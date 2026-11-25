@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.0](https://github.com/maltzsama/baleia-trino-catalog-store/compare/v0.10.2...v0.11.0) (2026-11-25)
+
+
+### Features
+
+* **opa:** ship Baleia's OPA policy bundle and access-control properties in the release ([c441c54](https://github.com/maltzsama/baleia-trino-catalog-store/commit/c441c54026ad3b3a9693a71b7a560eb8ba95b587))
+
 ## [0.10.2](https://github.com/maltzsama/baleia-trino-catalog-store/compare/v0.10.1...v0.10.2) (2026-11-05)
 
 
