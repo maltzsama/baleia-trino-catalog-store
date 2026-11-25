@@ -130,9 +130,22 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
+    # One Pages deployment at a time. Merging several PRs in a row starts one
+    # run per push, and their deployments raced: deploy-pages failed with
+    # "Fetching artifact metadata failed" while another run was deploying. A
+    # queued deployment waits instead of cancelling the one in flight.
+    concurrency:
+      group: github-pages
+      cancel-in-progress: false
 
     steps:
+    # Build the docs of main's current head, not of this run's commit. Jobs
+    # reach the group after build and acceptance, which take different times
+    # per run, so an older run can take the pending slot from a newer one.
+    # Any job that starts after the last push then still publishes that push.
     - uses: actions/checkout@v7
+      with:
+        ref: main
 
     - name: Set up JDK 25
       uses: actions/setup-java@v6
@@ -152,11 +165,17 @@ jobs:
         DATA_TRACKING: ${{ secrets.DATA_TRACKING }}
       run: ./mvnw -B process-resources javadoc:javadoc -Pjavadoc-overview -Dtrino.version=483
 
+    # The artifact is named per attempt: artifacts belong to the run, so a
+    # re-run would otherwise upload a second "github-pages" and deploy-pages
+    # refuses to pick between them ("Multiple artifacts named github-pages").
     - name: Upload Pages artifact
       uses: actions/upload-pages-artifact@v5
       with:
         path: target/reports/apidocs
+        name: github-pages-${{ github.run_attempt }}
 
     - name: Deploy to GitHub Pages
       id: deploy
       uses: actions/deploy-pages@v5
+      with:
+        artifact_name: github-pages-${{ github.run_attempt }}
