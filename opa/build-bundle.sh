@@ -21,10 +21,6 @@ if [ "$#" -ne 1 ]; then
 fi
 out="$(realpath -m "$1")"
 
-# The Trino release whose OPA input testdata/trino484 records; the adapter in
-# baleia/trino is tested against it.
-trino_input=484
-
 cd "$(dirname "$0")"
 mapfile -t files < <(find baleia -type f -name '*.rego' ! -name '*_test.rego' ! -path '*/testdata/*' | LC_ALL=C sort)
 if [ "${#files[@]}" -eq 0 ]; then
@@ -41,8 +37,7 @@ trap 'rm -rf "$work"' EXIT
 for f in "${files[@]}"; do
   install -D -m 0644 "$f" "$work/$f"
 done
-printf '{"revision":"%s","roots":["baleia/core","baleia/trino"],"metadata":{"trino_opa_input":"%s"}}\n' \
-  "$digest" "$trino_input" > "$work/.manifest"
+printf '{"revision":"%s","roots":["baleia/core","baleia/trino"]}\n' "$digest" > "$work/.manifest"
 
 (cd "$work" && tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner \
   --mode=0644 --format=ustar -cf - .manifest "${files[@]}") | gzip -9n > "$out"

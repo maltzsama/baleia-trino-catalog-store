@@ -22,8 +22,11 @@ the plugin release it pins.
 
 ## What the release tarball carries
 
-Each `baleia-catalog-store-<version>+trino<trino>.tar.gz` has an `opa/`
-directory, covered by the tarball's `.sha256`:
+The adapter is tested against the OPA input recorded from Trino 484
+(`baleia/testdata/trino484`), so only the `+trino484` tarball carries the
+policy: its `VERSION` names the Trino release the Rego was recorded against.
+`baleia-catalog-store-<version>+trino484.tar.gz` has an `opa/` directory,
+covered by the tarball's `.sha256`:
 
 | File | What it is |
 |---|---|
@@ -33,9 +36,7 @@ directory, covered by the tarball's `.sha256`:
 
 The policy digest is the SHA-256 of the sorted `<path> <sha256>` lines of the
 Rego files in the bundle (paths such as `baleia/core/core.rego`). OPA reports
-it as the policy bundle's active revision, and Baleia compares the two. The
-bundle's manifest metadata `trino_opa_input` names the Trino release whose OPA
-input the adapter is tested against.
+it as the policy bundle's active revision, and Baleia compares the two.
 
 Load the bundle as OPA's `policy` bundle from a local file, for example
 `resource: file:///policy/policy.tar.gz`, next to the signed data bundle that

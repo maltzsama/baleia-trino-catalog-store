@@ -228,9 +228,10 @@ On every push to `main`, it:
    publish the artifact to GitHub Packages. JitPack picks up the new tag
    automatically.
 3. A `tarballs` job builds one tarball per supported Trino version with the
-   plugin, the `contract/` fixtures, Baleia's OPA policy bundle and OPA
-   access-control properties (`opa/`, see [`opa/README.md`](opa/README.md))
-   and `VERSION`, and uploads it with its `.sha256`.
+   plugin, the `contract/` fixtures and `VERSION`, and uploads it with its
+   `.sha256`. The Trino 484 tarball also carries Baleia's OPA policy bundle
+   and OPA access-control properties (`opa/`, see
+   [`opa/README.md`](opa/README.md)).
 
 ### Commit conventions
 
