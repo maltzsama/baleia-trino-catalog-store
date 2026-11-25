@@ -42,6 +42,44 @@ jobs:
         name: spotbugs-report-${{ matrix.trino }}
         path: target/spotbugsXml.xml
 
+  # Baleia's OPA policy (opa/): strict check, formatting and the Rego tests,
+  # which replay the OPA inputs recorded from Trino, with the OPA release the
+  # Baleia chart pins. Also builds the policy bundle the release ships, twice,
+  # to prove it is deterministic.
+  opa:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      OPA_VERSION: v1.22.4
+      OPA_SHA256: 35e3b352e715e80624ead6c89930d8585f6f7d94cdc409eb2a9fe36620dcccba
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Install OPA ${{ env.OPA_VERSION }}
+      run: |
+        set -euo pipefail
+        curl -fsSL -o "$RUNNER_TEMP/opa" "https://github.com/open-policy-agent/opa/releases/download/${OPA_VERSION}/opa_linux_amd64_static"
+        echo "${OPA_SHA256}  $RUNNER_TEMP/opa" | sha256sum -c -
+        chmod +x "$RUNNER_TEMP/opa"
+        echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+
+    - name: Check, format and test the Rego
+      run: |
+        opa check --strict opa/baleia
+        opa fmt --list --fail opa/baleia
+        opa test -v opa/baleia
+
+    - name: Build the policy bundle
+      run: |
+        set -euo pipefail
+        first="$(opa/build-bundle.sh "$RUNNER_TEMP/first.tar.gz")"
+        second="$(opa/build-bundle.sh "$RUNNER_TEMP/second.tar.gz")"
+        test "$first" = "$second"
+        cmp "$RUNNER_TEMP/first.tar.gz" "$RUNNER_TEMP/second.tar.gz"
+        opa inspect "$RUNNER_TEMP/first.tar.gz"
+        opa inspect --format json "$RUNNER_TEMP/first.tar.gz" | grep -q "\"revision\": *\"$first\""
+
   acceptance:
     needs: build
     runs-on: ubuntu-latest
