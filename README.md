@@ -159,6 +159,9 @@ opt-in because it downloads the NVD database on first run:
 ./mvnw verify -Pdependency-check
 ```
 
+CI also checks and tests Baleia's OPA policy in `opa/` with `opa test`, and
+builds the policy bundle the release ships (see [`opa/README.md`](opa/README.md)).
+
 The entire `target/baleia-catalog-store/` directory goes to
 `/usr/lib/trino/plugin/baleia-catalog-store/` inside the Trino container.
 
@@ -224,6 +227,10 @@ On every push to `main`, it:
 2. A `publish` job checks out the release tag and runs `./mvnw deploy` to
    publish the artifact to GitHub Packages. JitPack picks up the new tag
    automatically.
+3. A `tarballs` job builds one tarball per supported Trino version with the
+   plugin, the `contract/` fixtures, Baleia's OPA policy bundle and OPA
+   access-control properties (`opa/`, see [`opa/README.md`](opa/README.md))
+   and `VERSION`, and uploads it with its `.sha256`.
 
 ### Commit conventions
 
