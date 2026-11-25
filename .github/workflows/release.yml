@@ -164,12 +164,23 @@ jobs:
         set -euo pipefail
         NAME="baleia-catalog-store-${TAG#v}+trino${TRINO}.tar.gz"
         # The plugin directory, the shared contract fixtures (Baleia's contract
-        # tests read them from the release it pins) and the VERSION stamp the
-        # init container checks.
+        # tests read them from the release it pins), the VERSION stamp the init
+        # container checks and, in the Trino 484 tarball only, Baleia's OPA
+        # policy bundle with the Trino OPA access-control properties that call
+        # it (Baleia ADR 0028): the Rego is tested against the OPA input
+        # recorded from Trino 484 (opa/baleia/testdata/trino484), and VERSION
+        # names that release. The .sha256 covers all of it.
         rm -rf dist && mkdir -p dist
         cp -r target/baleia-catalog-store contract dist/
         echo "${TAG#v}+trino${TRINO}" > dist/VERSION
-        tar -czf "$NAME" -C dist baleia-catalog-store contract VERSION
+        contents=(baleia-catalog-store contract VERSION)
+        if [ "$TRINO" = "484" ]; then
+          mkdir -p dist/opa
+          opa/build-bundle.sh dist/opa/baleia-opa-policy.tar.gz > dist/opa/REVISION
+          cp opa/opa-access-control.properties dist/opa/
+          contents+=(opa)
+        fi
+        tar -czf "$NAME" -C dist "${contents[@]}"
         sha256sum "$NAME" | cut -d' ' -f1 > "$NAME.sha256"
         echo "name=$NAME" >> "$GITHUB_OUTPUT"
 
