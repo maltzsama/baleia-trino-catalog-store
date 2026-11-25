@@ -133,14 +133,19 @@ jobs:
     # One Pages deployment at a time. Merging several PRs in a row starts one
     # run per push, and their deployments raced: deploy-pages failed with
     # "Fetching artifact metadata failed" while another run was deploying. A
-    # queued deployment waits instead of cancelling the one in flight; only the
-    # newest pending one runs, so the site ends on the latest main.
+    # queued deployment waits instead of cancelling the one in flight.
     concurrency:
       group: github-pages
       cancel-in-progress: false
 
     steps:
+    # Build the docs of main's current head, not of this run's commit. Jobs
+    # reach the group after build and acceptance, which take different times
+    # per run, so an older run can take the pending slot from a newer one.
+    # Any job that starts after the last push then still publishes that push.
     - uses: actions/checkout@v7
+      with:
+        ref: main
 
     - name: Set up JDK 25
       uses: actions/setup-java@v6
